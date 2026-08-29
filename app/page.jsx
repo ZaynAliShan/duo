@@ -3,6 +3,42 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import "./landing.css";
 
+/* the landing mock for Calendars: two tabs like the app's hub — ours (money + plans) and hers (cycle).
+   Auto-flips every few seconds; tapping a tab pins it. */
+function MkCalendars() {
+  const [tab, setTab] = useState(0);
+  const [pinned, setPinned] = useState(false);
+  useEffect(() => {
+    if (pinned) return;
+    const t = setInterval(() => setTab((v) => 1 - v), 4200);
+    return () => clearInterval(t);
+  }, [pinned]);
+  const pick = (i) => { setTab(i); setPinned(true); };
+  const OURS = { dot: [3, 9, 14, 20, 24], pin: [5, 25], today: 17 };
+  const HERS = { rose: [11, 12, 13], pred: [24, 25, 26, 27], fert: [17, 18, 19, 20], star: 19, today: 17 };
+  return (
+    <div className="mk mk-cals">
+      <div className="mk-tabs" role="tablist" aria-label="two calendars">
+        <button type="button" role="tab" aria-selected={tab === 0} className={tab === 0 ? "on" : ""} onClick={() => pick(0)}>📅 Our calendar</button>
+        <button type="button" role="tab" aria-selected={tab === 1} className={tab === 1 ? "on" : ""} onClick={() => pick(1)}>🌸 Her cycle</button>
+      </div>
+      <div className="mk-cal-stack">
+        <div className={"mk-cal ours" + (tab === 0 ? " show" : "")} aria-hidden={tab !== 0}>
+          {Array.from({ length: 28 }).map((_, i) => (
+            <span key={i} className={"d" + (OURS.dot.includes(i) ? " dot" : "") + (OURS.pin.includes(i) ? " pin" : "") + (i === OURS.today ? " today" : "")}>{i + 1}</span>
+          ))}
+        </div>
+        <div className={"mk-cal hers" + (tab === 1 ? " show" : "")} aria-hidden={tab !== 1}>
+          {Array.from({ length: 28 }).map((_, i) => (
+            <span key={i} className={"d" + (HERS.rose.includes(i) ? " rose" : "") + (HERS.pred.includes(i) ? " pred" : "") + (HERS.fert.includes(i) ? " fert" : "") + (i === HERS.star ? " star" : "") + (i === HERS.today ? " today" : "")}>{i + 1}</span>
+          ))}
+        </div>
+      </div>
+      <div className="mk-cap">{tab === 0 ? "spending dots · 📌 plans, bills, birthdays" : "period · predicted · fertile window — hers, shared if she wants"}</div>
+    </div>
+  );
+}
+
 const FEATURES = [
   {
     key: "today", e: "🏠", name: "Today",
@@ -20,13 +56,7 @@ const FEATURES = [
     key: "cal", e: "📅", name: "Calendars",
     line: "Two calendars — one for the two of you, one for her.",
     body: "Our Calendar keeps the money and the plans in one month view: what you spent each day, dates, bills, birthdays, trips. Her Cycle is a separate, gentle calendar — private to her unless she chooses to share it.",
-    mock: (
-      <div className="mk mk-cal">
-        {Array.from({ length: 28 }).map((_, i) => (
-          <span key={i} className={"d" + ([3, 9, 14, 20, 24].includes(i) ? " dot" : "") + ([11, 12, 13].includes(i) ? " rose" : "") + (i === 17 ? " today" : "")}>{i + 1}</span>
-        ))}
-      </div>
-    ),
+    mock: <MkCalendars />,
   },
   {
     key: "notes", e: "📌", name: "Corkboard",

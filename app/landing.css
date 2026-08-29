@@ -152,6 +152,22 @@
 .mk-cal .d.dot::after{content:"";position:absolute;bottom:3px;width:4px;height:4px;border-radius:50%;background:var(--coral);}
 .mk-cal .d.rose{background:var(--rose-soft);color:var(--rose-text);}
 .mk-cal .d.today{background:var(--butter);color:#4A3527;}
+/* two-calendar mock */
+.mk-cals{max-width:300px;}
+.mk-tabs{display:flex;gap:4px;background:var(--chip);border-radius:999px;padding:4px;margin-bottom:10px;}
+.mk-tabs button{flex:1;border:0;background:transparent;border-radius:999px;padding:7px 8px;font-size:12px;font-weight:800;color:var(--ink-soft);cursor:pointer;transition:background .25s,color .25s,box-shadow .25s;white-space:nowrap;}
+.mk-tabs button.on{background:var(--card);color:var(--ink);box-shadow:var(--shadow);}
+.mk-tabs button:focus-visible{outline:2px solid var(--sky);outline-offset:1px;}
+.mk-cal-stack{display:grid;}
+.mk-cal-stack .mk-cal{grid-area:1/1;opacity:0;transform:translateY(6px) scale(.985);transition:opacity .45s ease,transform .45s cubic-bezier(.2,.7,.2,1);pointer-events:none;}
+.mk-cal-stack .mk-cal.show{opacity:1;transform:none;pointer-events:auto;}
+.mk-cal.hers{background:color-mix(in srgb,var(--rose-soft) 45%,var(--ground));}
+.mk-cal .d.pin::after{content:"📌";position:absolute;top:-4px;right:-3px;font-size:9px;line-height:1;}
+.mk-cal .d.pred{box-shadow:inset 0 0 0 1.5px var(--rose);color:var(--rose-text);}
+.mk-cal .d.fert{background:color-mix(in srgb,var(--butter) 38%,transparent);}
+.mk-cal .d.star::before{content:"✦";position:absolute;bottom:-1px;font-size:8px;color:var(--butter-deep);}
+.mk-cal .d.fert.today{background:var(--butter);}
+.mk-cap{margin-top:8px;text-align:center;font-family:var(--hand);font-size:13px;color:var(--ink-soft);min-height:18px;}
 .mk-notes{position:relative;height:150px;}
 .mk-notes .stick{position:absolute;font-family:var(--hand);font-size:14.5px;line-height:1.4;padding:12px 14px;color:#4A3527;border-radius:3px;box-shadow:0 6px 14px rgba(74,53,39,.2);}
 .mk-notes .stick.a{left:0;top:6px;width:150px;background:var(--butter);transform:rotate(-4deg);}
