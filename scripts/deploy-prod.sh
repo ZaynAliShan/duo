@@ -51,15 +51,15 @@ echo "  ✓ no confirmation emails; sign-up creates a live session"
 say "4/6  Vercel: link project + env vars"
 [ -f .vercel/project.json ] || npx vercel link --yes --project duo "${VT[@]}" >/dev/null
 npx vercel git connect "${VT[@]}" --yes >/dev/null 2>&1 || echo "  (git connect skipped — pushes won't auto-deploy; CLI deploys still work)"
-set_env() {
-  npx vercel env rm "$1" production --yes "${VT[@]}" >/dev/null 2>&1 || true
-  printf '%s' "$2" | npx vercel env add "$1" production "${VT[@]}" >/dev/null
+set_env() { # name value [secret]  — --force + explicit sensitivity so the CLI never prompts
+  local flag=--no-sensitive; [ "${3:-}" = secret ] && flag=--sensitive
+  printf '%s' "$2" | npx vercel env add "$1" production --force $flag "${VT[@]}" >/dev/null 2>&1 || { echo "✗ env add $1 failed"; exit 1; }
   echo "  ✓ $1"
 }
 set_env NEXT_PUBLIC_SUPABASE_URL "$NEXT_PUBLIC_SUPABASE_URL"
 set_env NEXT_PUBLIC_SUPABASE_ANON_KEY "$NEXT_PUBLIC_SUPABASE_ANON_KEY"
-set_env SUPABASE_SERVICE_ROLE_KEY "$SUPABASE_SERVICE_ROLE_KEY"
-set_env CRON_SECRET "$CRON_SECRET"
+set_env SUPABASE_SERVICE_ROLE_KEY "$SUPABASE_SERVICE_ROLE_KEY" secret
+set_env CRON_SECRET "$CRON_SECRET" secret
 
 # ---- 5. Deploy, learn the URL, set it everywhere, deploy again ------------
 say "5/6  Vercel: first deploy"

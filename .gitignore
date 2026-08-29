@@ -14,3 +14,4 @@ shots
 *.zip
 .env.prod
 .vercel
+.env*
