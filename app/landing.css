@@ -72,7 +72,7 @@
 .ld .hi-1{animation-delay:.05s}.ld .hi-2{animation-delay:.15s}.ld .hi-3{animation-delay:.3s}.ld .hi-4{animation-delay:.45s}
 
 /* ---- the desk (signature) ---- */
-.desk{position:relative;height:460px;}
+.desk{position:relative;height:500px;}
 .desk .phone{position:absolute;width:236px;background:var(--card);border:1px solid var(--line);border-radius:26px;padding:14px 14px 16px;box-shadow:var(--shadow-big);}
 .desk .phone-a{left:0;top:26px;transform:rotate(-3deg);}
 .desk .phone-b{right:0;top:120px;transform:rotate(2.5deg);}
@@ -100,10 +100,14 @@
 .jar-col .jar::before{z-index:2;}
 .jar-col .jar .pct{z-index:2;}
 .jar-col > span{font-family:var(--hand);font-size:14px;color:var(--ink);}
-.desk-jar{position:absolute;right:44px;bottom:0;}
-.desk-jar .jar{width:96px;height:134px;}
+.desk-jar{position:absolute;right:28px;bottom:0;transform:rotate(-5deg);transform-origin:50% 90%;animation:ld-float 8s ease-in-out infinite;animation-delay:-2s;}
+.desk-jar .jar{width:96px;height:134px;box-shadow:0 14px 30px -6px rgba(74,53,39,.28),0 3px 8px rgba(74,53,39,.10);background:color-mix(in srgb,var(--card) 70%,transparent);}
+.desk-jar > span{text-shadow:0 1px 0 rgba(255,253,246,.6);}
 .desk-jar .liquid.grow{animation:ld-grow 7s ease-in-out infinite;transition:none;}
 .desk-jar .pct-anim::after{content:"38%";animation:ld-pct 7s steps(1) infinite;}
+/* dark mode: the animated landing jar flips its label to cocoa once the liquid climbs past it */
+:root[data-theme="dark"] .desk-jar .pct-anim{animation:ld-pct-ink 7s steps(1) infinite;}
+@keyframes ld-pct-ink{0%,24%{color:var(--ink)}25%,92%{color:#4A3527}93%,100%{color:var(--ink)}}
 .desk-jar .conf{position:absolute;inset:0 0 24px;pointer-events:none;z-index:3;}
 .desk-jar .conf i{position:absolute;left:50%;top:40%;width:6px;height:9px;border-radius:2px;background:var(--coral);opacity:0;animation:ld-conf 7s ease-out infinite;}
 .desk-jar .conf i:nth-child(2){background:var(--sage);--dx:-38px;--dy:-60px;--r:120deg}
@@ -191,6 +195,7 @@
   .desk{height:470px;max-width:460px;margin:0 auto;width:100%;} /* tall enough that the jar clears his phone */
   .desk .phone{width:200px;}
   .desk .phone-b{top:110px;}
+  .desk-jar{right:6px;transform:rotate(-6deg);}
   .en-amt{font-size:24px;}
   .feat{grid-template-columns:1fr;gap:18px;padding:20px;}
   .feat.flip .feat-txt{order:1}.feat.flip .feat-mock{order:2}
@@ -204,9 +209,9 @@
   .sticky.mini{width:126px;font-size:12px;right:8px;top:0;}
 }
 @media (max-width:380px){
-  .desk{height:500px;}
+  .desk{height:525px;}
   .desk .phone{width:164px;}
-  .desk-jar{right:32px;}
+  .desk-jar{right:0;}
 }
 @media (prefers-reduced-motion:reduce){
   .ld *,.ld *::before,.ld *::after{animation:none!important;transition:none!important;}

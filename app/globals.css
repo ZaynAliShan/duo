@@ -1062,8 +1062,10 @@ h2.pane-title{font-family:var(--hand);font-size:26px;margin:8px 2px 4px;}
   position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);
   text-align:center;font-weight:800;font-size:16px;color:var(--ink);text-shadow:0 1px 0 rgba(255,255,255,.4);
 }
-/* dark mode: --ink turns cream, which vanishes on the pastel liquid — keep the label cocoa */
-:root[data-theme="dark"] .jar .pct{color:#4A3527;text-shadow:0 1px 0 rgba(255,253,246,.35);}
+/* dark mode: --ink is cream, which reads on the dark empty glass but vanishes once the pastel liquid
+   reaches the label. `.lit` (fill ≥ 50%, i.e. liquid behind the number) flips it to cocoa. */
+:root[data-theme="dark"] .jar .pct{color:var(--ink);text-shadow:none;transition:color .4s;}
+:root[data-theme="dark"] .jar .pct.lit{color:#4A3527;}
 .goal-info{flex:1;min-width:0;}
 .goal-info .gname{font-family:var(--hand);font-size:20px;font-weight:800;margin:0 0 2px;}
 .goal-info .gnum{font-size:14px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--ink-soft);margin-bottom:6px;}

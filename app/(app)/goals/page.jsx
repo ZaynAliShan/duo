@@ -94,7 +94,7 @@ export default function GoalsPage() {
               const last = g.hist[0];
               return (
                 <div className="goal-card" key={g.id}>
-                  <div className="jar"><div className="liquid" style={{ background: g.color, height: g.pct + "%" }} /><div className="pct">{g.pct}%</div></div>
+                  <div className="jar"><div className="liquid" style={{ background: g.color, height: g.pct + "%" }} /><div className={"pct" + (g.pct >= 50 ? " lit" : "")}>{g.pct}%</div></div>
                   <div className="goal-info">
                     <div className="gname-row">
                       <div className="gname">{g.name} {g.emoji}</div>

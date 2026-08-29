@@ -45,9 +45,9 @@ const FEATURES = [
     body: "Either of you drops money in; 100% = confetti. A bucket list for the dreams that aren't about money.",
     mock: (
       <div className="mk mk-goals">
-        <div className="jar-col"><div className="jar"><div className="liquid" style={{ background: "var(--butter)", height: "68%" }} /><div className="pct">68%</div></div><span>Japan 🗼</span></div>
+        <div className="jar-col"><div className="jar"><div className="liquid" style={{ background: "var(--butter)", height: "68%" }} /><div className="pct lit">68%</div></div><span>Japan 🗼</span></div>
         <div className="jar-col"><div className="jar"><div className="liquid" style={{ background: "var(--sage)", height: "35%" }} /><div className="pct">35%</div></div><span>Sofa 🛋</span></div>
-        <div className="jar-col"><div className="jar"><div className="liquid" style={{ background: "var(--peach)", height: "100%" }} /><div className="pct">100%</div></div><span>Oven 🎉</span></div>
+        <div className="jar-col"><div className="jar"><div className="liquid" style={{ background: "var(--peach)", height: "100%" }} /><div className="pct lit">100%</div></div><span>Oven 🎉</span></div>
       </div>
     ),
   },
