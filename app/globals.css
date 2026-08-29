@@ -64,11 +64,16 @@
 html,body{margin:0;padding:0;}
 body{
   background:var(--ground);
-  background-image:radial-gradient(1400px 700px at 50% -10%, rgba(255,217,122,.22), transparent 60%);
-  background-attachment:fixed;
   font-family:var(--round);
   color:var(--ink);
   min-height:100vh;
+}
+/* the warm top glow lives on a fixed pseudo-element, not `background-attachment:fixed` —
+   Safari/Chrome on macOS re-rasterise a fixed body background per composited layer, which
+   paints a faint rectangle around any card with a transform/opacity transition (shadows look clipped) */
+body::before{
+  content:"";position:fixed;inset:0;z-index:-2;pointer-events:none;
+  background:radial-gradient(1400px 700px at 50% -10%, rgba(255,217,122,.22), transparent 60%);
 }
 button{font-family:var(--round);color:var(--ink);}
 
@@ -1056,13 +1061,8 @@ h2.pane-title{font-family:var(--hand);font-size:26px;margin:8px 2px 4px;}
   position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);
   text-align:center;font-weight:800;font-size:16px;color:var(--ink);text-shadow:0 1px 0 rgba(255,255,255,.4);
 }
-/* dark mode: --ink turns cream, which vanishes on the pastel liquid — and the empty glass is dark,
-   so a cocoa label alone fails too. A little cream pill reads over both. */
-:root[data-theme="dark"] .jar .pct{
-  left:50%;right:auto;transform:translate(-50%,-50%);width:max-content;
-  color:#4A3527;text-shadow:none;font-size:14px;line-height:1;
-  background:rgba(255,253,246,.9);padding:5px 9px;border-radius:999px;box-shadow:0 2px 6px rgba(0,0,0,.25);
-}
+/* dark mode: --ink turns cream, which vanishes on the pastel liquid — keep the label cocoa */
+:root[data-theme="dark"] .jar .pct{color:#4A3527;text-shadow:0 1px 0 rgba(255,253,246,.35);}
 .goal-info{flex:1;min-width:0;}
 .goal-info .gname{font-family:var(--hand);font-size:20px;font-weight:800;margin:0 0 2px;}
 .goal-info .gnum{font-size:14px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--ink-soft);margin-bottom:6px;}
