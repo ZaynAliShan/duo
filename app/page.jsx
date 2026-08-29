@@ -89,6 +89,11 @@ export default function Landing() {
 
   return (
     <div className="ld">
+      {/* ambient background: two slow warm glows + a few tiny hearts drifting up. Pure CSS, decorative only. */}
+      <div className="ld-sky" aria-hidden="true">
+        <i className="glow g1" /><i className="glow g2" /><i className="glow g3" />
+        {Array.from({ length: 9 }, (_, i) => <b key={i} className={"fh fh-" + (i + 1)}>{i % 3 === 2 ? "🤍" : "💛"}</b>)}
+      </div>
       <header className="ld-top">
         <span className="wordmark">duo <span className="heart">💛</span></span>
         <div className="ld-top-r">
