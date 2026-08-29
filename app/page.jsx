@@ -17,9 +17,9 @@ const FEATURES = [
     ),
   },
   {
-    key: "cal", e: "📅", name: "Calendar",
-    line: "One calendar for your money and your plans.",
-    body: "Every day shows what you spent and what's coming — dates, bills, birthdays, trips. Her cycle gets its own gentle calendar here too, shared only if she chooses.",
+    key: "cal", e: "📅", name: "Calendars",
+    line: "Two calendars — one for the two of you, one for her.",
+    body: "Our Calendar keeps the money and the plans in one month view: what you spent each day, dates, bills, birthdays, trips. Her Cycle is a separate, gentle calendar — private to her unless she chooses to share it.",
     mock: (
       <div className="mk mk-cal">
         {Array.from({ length: 28 }).map((_, i) => (

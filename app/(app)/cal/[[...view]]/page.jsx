@@ -49,14 +49,14 @@ function Hub({ d, today, go }) {
   return (
     <div>
       <h2 className="pane-title">Our calendars 📅</h2>
-      <p className="pane-sub">Two rhythms, one home — pick a calendar.</p>
+      <p className="pane-sub">Two calendars — one for the two of you, one for her.</p>
       <div className="hub-grid">
         <button className="hub-card" id="hubFinCard" onClick={() => go("fin")}>
           <span className="wm">💸</span><span className="hub-emoji">💸</span>
           <div className="hub-info">
-            <div className="hub-name">Financial Calendar</div>
+            <div className="hub-name">Our Calendar</div>
             <div className="hub-line"><b>{fmt(spent)}</b> spent in {format(fromKey(today), "MMMM")} · {adds} jar {adds === 1 ? "add" : "adds"}</div>
-            <div className="hub-meta">spending dots · 🎯 jar adds · the little moments</div>
+            <div className="hub-meta">spending · dates &amp; plans · 🎯 jar adds · little moments</div>
           </div><span className="hub-go">→</span>
         </button>
         <button className="hub-card" id="hubCycCard" onClick={() => go("cycle")}>
