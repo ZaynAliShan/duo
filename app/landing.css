@@ -148,7 +148,7 @@
 /* responsive */
 @media (max-width:860px){
   .ld-hero{grid-template-columns:1fr;gap:26px;padding:28px 0 20px;min-height:0;}
-  .desk{height:400px;max-width:460px;margin:0 auto;width:100%;}
+  .desk{height:470px;max-width:460px;margin:0 auto;width:100%;} /* tall enough that the jar clears his phone */
   .desk .phone{width:200px;}
   .desk .phone-b{top:110px;}
   .en-amt{font-size:24px;}
@@ -157,14 +157,14 @@
   .feat-mock{min-height:0;}
 }
 @media (max-width:440px){
-  .desk{height:430px;}
+  .desk{height:485px;}
   .desk .phone{width:172px;padding:12px;}
   .desk .phone-b{top:118px;}
   .polaroid{width:104px;bottom:10px;}
   .sticky.mini{width:126px;font-size:12px;right:8px;top:0;}
 }
 @media (max-width:380px){
-  .desk{height:480px;}
+  .desk{height:500px;}
   .desk .phone{width:164px;}
   .desk-jar{right:32px;}
 }
