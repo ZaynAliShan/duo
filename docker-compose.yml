@@ -1,0 +1,62 @@
+# Duo 💛 — the whole local stack with one command:  docker compose up --build
+#   supabase  → runs the Supabase CLI against your Docker daemon; it brings up Postgres, Auth, REST,
+#               Realtime, Storage, Studio and Mailpit as sibling containers (supabase_*_duo) and applies
+#               supabase/migrations + seed.sql + buckets + the magic-link email template.
+#   web       → the Next.js app in dev mode with hot reload (your files are bind-mounted; save → browser updates).
+#               Production build instead:  npm run up:prod   (docker-compose.prod.yml overrides the target)
+# URLs: app http://localhost:3000 · API http://127.0.0.1:54321 · Studio http://127.0.0.1:54323 · emails http://127.0.0.1:54324
+# The keys below are the Supabase CLI's fixed local-dev keys (identical on every machine) — never used in PROD.
+services:
+  supabase:
+    build:
+      context: .
+      dockerfile: docker/supabase.Dockerfile
+    environment:
+      PROJECT_DIR: ${PWD:?run docker compose from the duo/ directory}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${PWD:?run docker compose from the duo/ directory}:${PWD}   # same absolute path inside, so the CLI's bind mounts resolve on the host daemon
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      # healthy = the supervisor finished `supabase start` (marker file) AND the API answers
+      test: ["CMD-SHELL", "test -f /tmp/ready && curl -sf http://host.docker.internal:54321/rest/v1/ -H 'apikey: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0}'"]
+      interval: 5s
+      timeout: 5s
+      retries: 360               # the first run pulls several GB of Supabase images — give it room
+      start_period: 30s
+    stop_grace_period: 90s     # time for `supabase stop` to shut the stack down cleanly
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      target: dev
+      args:
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-http://127.0.0.1:54321}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0}
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+    depends_on:
+      supabase:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    volumes:
+      - .:/app                       # live source → hot reload
+      - web_node_modules:/app/node_modules   # keep the image's Linux node_modules, not the host's
+      - web_next:/app/.next          # dev build cache, separate from any host `next build`
+    environment:
+      NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-http://127.0.0.1:54321}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0}
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+      # the container reaches the host's Supabase here; the browser keeps using 127.0.0.1:54321
+      SUPABASE_INTERNAL_URL: http://host.docker.internal:54321
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU}
+      CRON_SECRET: ${CRON_SECRET:-local-dev-secret}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
+volumes:
+  web_node_modules:
+  web_next:

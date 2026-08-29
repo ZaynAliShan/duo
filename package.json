@@ -1,0 +1,38 @@
+{
+  "name": "duo",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "test": "vitest run",
+    "db:start": "supabase start",
+    "db:stop": "supabase stop",
+    "db:reset": "supabase db reset",
+    "db:status": "supabase status",
+    "up": "docker compose up --build",
+    "up:prod": "docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build",
+    "down": "docker compose down",
+    "dev:local": "node scripts/up.mjs"
+  },
+  "dependencies": {
+    "@serwist/next": "^9.5.0",
+    "@supabase/ssr": "^0.7.0",
+    "@supabase/supabase-js": "^2.56.0",
+    "browser-image-compression": "^2.0.2",
+    "canvas-confetti": "^1.9.3",
+    "date-fns": "^4.1.0",
+    "next": "^15.5.0",
+    "qrcode": "^1.5.4",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "serwist": "^9.5.0"
+  },
+  "devDependencies": {
+    "playwright": "1.55",
+    "supabase": "^2.116.0",
+    "vitest": "^3.2.0"
+  }
+}

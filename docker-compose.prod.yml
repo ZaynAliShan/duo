@@ -1,0 +1,9 @@
+# Production build of the app (same image Vercel-equivalent):  npm run up:prod
+#   = docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build
+services:
+  web:
+    build:
+      target: run
+    volumes: !reset []
+    environment:
+      NODE_ENV: production

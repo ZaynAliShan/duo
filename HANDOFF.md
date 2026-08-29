@@ -1,0 +1,23 @@
+# Duo 💛 — where things stand (28 Aug 2026)
+
+## Running it
+- **One command:** `cd duo && docker compose up --build` → Supabase stack (Postgres, Auth, REST, Realtime, Storage, Studio, Mailpit) + the app container. `docker compose down` stops it all, data kept. App: http://localhost:3000 · emails (magic link + 6-digit code): http://127.0.0.1:54324 · Studio: http://127.0.0.1:54323. Stop: `docker compose down` (Supabase data survives in a Docker volume; `npm run db:reset` wipes + re-migrates).
+- The `web` container is `next dev` with the source bind-mounted → saves hot-reload on :3000. `npm run up:prod` runs the production image instead. Host-side alternative: `docker compose up supabase` then `npm run dev`.
+- Demo data: `node scripts/seed-demo.mjs` (already run): `a@duo.test` (Zain) & `b@duo.test` (Hamna). Codes land in Mailpit.
+
+## What's built (all phases of duo-plan.md, locally)
+Auth (email link **and** 6-digit code, PWA-friendly) · onboarding (name, 6 colours, photo) · Start a Duo / join by link, code or QR · waiting screen · solo mode · 8-tab shell matching the prototype (Today, Feed, Goals, Memories, Corkboard, Cycle, Calendars, Us) · Today (check-in with server-enforced blur-until-you-post, QOTD reveal-after-both, countdowns, 💛 ping, saved/spent today, streaks, jars glance, note teaser, partner cycle card) · Add sheet (pad, chips, date picker, moments + photos, offline queue) · Feed (hearts, edit/delete own, live) · Goals hub/jars/contributions/history/pace line/confetti/bucket list · Memories wall + lightbox + range picker · Corkboard (drag, colours, lists, pins to top/day/jar, forget-me-nots) · Her cycle (ring, phases, care carousel, predictions, history, log sheet, sharing toggle) · Calendars (hub, financial with marks CRUD + recurrence, cycle calendar) · Us (story stats, money picture with donut/trends, soft caps, cached recap envelope, settings, leave/sign out) · NUX tour · landing page · PWA manifest/icons/service worker · keep-alive + cleanup cron routes.
+
+## Verified
+- `npm test` (16 unit tests: cycle, pace, recap) · `node scripts/negative-test.mjs` (third account sees nothing; blur, own-only, sharing rules) · Playwright: `ui-check` (every page × 2 viewports + add flow), `ui-flows` (two live browsers, realtime), `ui-onboarding` (real email → code → invite → join). All green against the Docker container.
+
+## For PROD (when you're back)
+1. Supabase project → run `supabase link` + `supabase db push`; create private buckets `checkins`, `moments`, `avatars` (or copy `config.toml` bucket blocks); set the magic-link email template from `supabase/templates/magic_link.html` (needs `{{ .Token }}`); Auth → URL config: site URL + `/auth/callback` redirect.
+2. Vercel env: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_APP_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `CRON_SECRET` (leave `SUPABASE_INTERNAL_URL` unset). `vercel.json` already schedules both crons.
+3. Phones on the LAN before prod: rebuild with `NEXT_PUBLIC_SUPABASE_URL=http://<your-mac-ip>:54321` and `NEXT_PUBLIC_APP_URL=http://<your-mac-ip>:3000`.
+
+## Review round 2 (2026-08-29) — full-codebase review, fixed
+Five focused review passes (SQL/RLS, libs, components, pages, ops) → 60+ findings triaged, the real ones fixed and regression-tested: couple-scoped blur reveal + no check-in/answer deletion + invite-preview oracle closed + actor-column pinning (migration `20260829000001`); REPLICA IDENTITY FULL + DB-trigger goal completion (migration `20260829000000`); realtime DELETE delivery, resubscribe/wake catch-up, load sequencing; fail-closed cron auth + paginated cleanup; offline queue made idempotent (client ids + upsert, single-flight, transient errors never drop entries); backdated entries stamped at couple-timezone noon; check-in re-save no longer duplicates the feed moment or wipes the photo; streak no longer capped by the feed window; recurrence clamping (Jan-31-style marks); calendar weekday/selection on month change; overdue-period copy; optimistic hearts; contentEditable placeholder crash; signed-URL refresh on long-open tabs; sheets `inert` when closed; `.dockerignore`; `${PWD:?}` guard; portable test scripts (playwright is now a devDependency). Suites: 16 unit, 43-check negative RLS test, 22-page walk-through, 17 two-browser live flows — all green against the compose stack.
+
+## Known gaps / next
+Offline queue is implemented but only lightly exercised; Lighthouse/a11y pass not run; iOS install flow untested on a real device; the recap caches on first open of Us (not literally on the 1st).
