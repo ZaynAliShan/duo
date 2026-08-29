@@ -119,7 +119,7 @@ export default function Landing() {
             <div className="entry">
               {/* each phone shows what the other one added: hers has Z's entry (she taps 💛), his has H's */}
               <div className="en-top"><span className="av him">Z</span><span className="en-who"><b>Z</b> added</span><span className="en-time">just now</span></div>
-              <div className="en-amt">₨500 <small>Food</small></div>
+              <div className="en-amt">₨800 <small>Food</small></div>
               <div className="en-like"><span className="hb">💛</span><span className="hl">You tapped 💛</span></div>
             </div>
           </div>
