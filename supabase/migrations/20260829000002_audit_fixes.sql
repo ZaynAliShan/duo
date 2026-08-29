@@ -158,28 +158,7 @@ begin
     (p_couple, p_profile, 'other', '👖', 'Clothing sizes', 1),
     (p_couple, p_profile, 'other', '👟', 'Shoe size', 2);
 end $$;
--- NB: `revoke … from anon` alone does nothing while PUBLIC still holds EXECUTE (Postgres' default for new
--- functions) — anon inherits it. Strip PUBLIC, then grant back only to the roles that need it.
-do $$
-declare f text;
-begin
-  foreach f in array array[
-    'public.create_couple()', 'public.create_invite()', 'public.redeem_invite(text)', 'public.leave_couple()',
-    'public.delete_account()', 'public.couple_members()', 'public.current_couple_id()', 'public.has_checked_in(date)',
-    'public.has_answered(date)', 'public.shares_cycle(uuid)', 'public.storage_day(text)', 'public.couple_today()',
-    'public.checkin_streaks()', 'public.goal_in_couple(uuid)', 'public.entry_in_couple(uuid)', 'public.note_in_couple(uuid)',
-    'public.category_in_couple(uuid)', 'public.profile_in_couple(uuid)']
-  loop
-    execute format('revoke execute on function %s from public, anon', f);
-    execute format('grant execute on function %s to authenticated, service_role', f);
-  end loop;
-  -- the storage-policy helpers also run as the storage service's roles
-  foreach f in array array['public.current_couple_id()', 'public.has_checked_in(date)', 'public.storage_day(text)']
-  loop execute format('grant execute on function %s to authenticated, service_role, supabase_storage_admin', f); end loop;
-  -- the only RPC a stranger may call, on purpose: the (opaque) invite preview
-  execute 'revoke execute on function public.invite_preview(text) from public';
-  execute 'grant execute on function public.invite_preview(text) to anon, authenticated, service_role';
-end $$;
+
 
 -- ---------------------------------------------------------------------------
 -- T2: check-in streaks for both members, computed where all rows are visible
@@ -205,3 +184,29 @@ revoke execute on function public.checkin_streaks() from anon;
 -- ---------------------------------------------------------------------------
 update public.categories set monthly_cap = null where monthly_cap < 0;
 alter table public.categories add constraint categories_cap_nonneg check (monthly_cap is null or monthly_cap >= 0);
+
+-- ---------------------------------------------------------------------------
+-- Function privileges (last: every function referenced below must already exist)
+-- ---------------------------------------------------------------------------
+-- NB: `revoke … from anon` alone does nothing while PUBLIC still holds EXECUTE (Postgres' default for new
+-- functions) — anon inherits it. Strip PUBLIC, then grant back only to the roles that need it.
+do $$
+declare f text;
+begin
+  foreach f in array array[
+    'public.create_couple()', 'public.create_invite()', 'public.redeem_invite(text)', 'public.leave_couple()',
+    'public.delete_account()', 'public.couple_members()', 'public.current_couple_id()', 'public.has_checked_in(date)',
+    'public.has_answered(date)', 'public.shares_cycle(uuid)', 'public.storage_day(text)', 'public.couple_today()',
+    'public.checkin_streaks()', 'public.goal_in_couple(uuid)', 'public.entry_in_couple(uuid)', 'public.note_in_couple(uuid)',
+    'public.category_in_couple(uuid)', 'public.profile_in_couple(uuid)']
+  loop
+    execute format('revoke execute on function %s from public, anon', f);
+    execute format('grant execute on function %s to authenticated, service_role', f);
+  end loop;
+  -- the storage-policy helpers also run as the storage service's roles
+  foreach f in array array['public.current_couple_id()', 'public.has_checked_in(date)', 'public.storage_day(text)']
+  loop execute format('grant execute on function %s to authenticated, service_role, supabase_storage_admin', f); end loop;
+  -- the only RPC a stranger may call, on purpose: the (opaque) invite preview
+  execute 'revoke execute on function public.invite_preview(text) from public';
+  execute 'grant execute on function public.invite_preview(text) to anon, authenticated, service_role';
+end $$;
