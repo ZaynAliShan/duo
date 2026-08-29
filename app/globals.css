@@ -1056,6 +1056,13 @@ h2.pane-title{font-family:var(--hand);font-size:26px;margin:8px 2px 4px;}
   position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);
   text-align:center;font-weight:800;font-size:16px;color:var(--ink);text-shadow:0 1px 0 rgba(255,255,255,.4);
 }
+/* dark mode: --ink turns cream, which vanishes on the pastel liquid — and the empty glass is dark,
+   so a cocoa label alone fails too. A little cream pill reads over both. */
+:root[data-theme="dark"] .jar .pct{
+  left:50%;right:auto;transform:translate(-50%,-50%);width:max-content;
+  color:#4A3527;text-shadow:none;font-size:14px;line-height:1;
+  background:rgba(255,253,246,.9);padding:5px 9px;border-radius:999px;box-shadow:0 2px 6px rgba(0,0,0,.25);
+}
 .goal-info{flex:1;min-width:0;}
 .goal-info .gname{font-family:var(--hand);font-size:20px;font-weight:800;margin:0 0 2px;}
 .goal-info .gnum{font-size:14px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--ink-soft);margin-bottom:6px;}
