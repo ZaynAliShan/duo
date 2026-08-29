@@ -57,18 +57,20 @@ export default function AddSheet({ open, onClose, onSaved }) {
       note: note.trim() || (moment && !tag ? "" : note.trim()),
       happened_at: happened.toISOString(),
     };
+    const photoPath = moment && file ? `${couple.id}/${me.id}/${crypto.randomUUID()}.jpg` : null;
     try {
-      if (moment && file) {
-        if (!navigator.onLine) { toast("photos need signal — saved the moment without it 💛"); }
-        else row.photo_path = await uploadPhoto(supabase, "moments", `${couple.id}/${me.id}/${crypto.randomUUID()}.jpg`, file);
+      if (photoPath) {
+        if (!navigator.onLine) throw Object.assign(new Error("offline"), { offline: true }); // queue row + photo together below
+        row.photo_path = await uploadPhoto(supabase, "moments", photoPath, file);
       }
       const { error } = await supabase.from("entries").insert(row);
       if (error) throw error;
     } catch (e) {
-      if (!navigator.onLine || isNetworkError(e)) {
-        const ok = await enqueue({ table: "entries", row });
+      if (e?.offline || !navigator.onLine || isNetworkError(e)) {
+        // the photo waits in IndexedDB with the row and goes up first on replay — nothing is silently dropped
+        const ok = await enqueue({ table: "entries", row, photo: photoPath && !row.photo_path ? { bucket: "moments", path: photoPath, file } : null });
         if (!ok) { toast("no signal and nowhere to keep it — try again when you're back online 💛"); setBusy(false); return; }
-        toast("no signal — saved, it'll send itself 💛");
+        toast(photoPath && !row.photo_path ? "no signal — saved with the photo, it'll send itself 💛" : "no signal — saved, it'll send itself 💛");
       } else { toast("that didn't save — " + (e.message || "try again")); setBusy(false); return; }
     }
     setBusy(false); reset(); onSaved?.();

@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import QRCode from "qrcode";
 import { useDuo } from "@/components/DuoProvider";
 import { copy } from "@/lib/copy";
+import { signOutClean } from "@/lib/session";
 
 export default function Waiting() {
   const { supabase, me, partner, couple, toast } = useDuo();
@@ -37,9 +38,9 @@ export default function Waiting() {
     setBusy(true);
     const { data, error } = await supabase.rpc("create_invite");
     setBusy(false);
-    if (data) { setCode(data); toast("fresh code, 7 more days 💛"); } else if (error) toast(error.message);
+    if (data) { setCode(data); toast("fresh code — the old one stopped working 💛"); } else if (error) toast(error.message);
   }
-  async function signOut() { await supabase.auth.signOut(); router.replace("/login"); router.refresh(); }
+  async function signOut() { await signOutClean(supabase); router.replace("/login"); router.refresh(); }
 
   return (
     <div className="center-page">
@@ -48,7 +49,7 @@ export default function Waiting() {
         <h1>{copy.waitingTitle}</h1>
         <p>Send this to them on WhatsApp. When they tap it and sign in, you're linked — confetti on both phones. You can start logging while you wait.</p>
         <div className="big-code">{code || "······"}</div>
-        <div className="tiny" style={{ marginTop: 0 }}>the code lasts 7 days · one use</div>
+        <div className="tiny" style={{ marginTop: 0 }}>the code lasts 48 hours · one use · "new code" cancels the old one</div>
         {qr && <img className="qr" src={qr} alt="QR code for the invite link" width={180} height={180} />}
         <div className="row" style={{ marginTop: 14 }}>
           <button className="save-btn" onClick={share} disabled={!code}>Share the invite 💌</button>

@@ -2,33 +2,35 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { addMonths, addYears, differenceInCalendarDays, format, setDate, setMonth, subDays } from "date-fns";
-import { useDuo, useLive } from "@/components/DuoProvider";
+import { addMonths, addYears, differenceInCalendarDays, format, subDays } from "date-fns";
+import { useDuo, useLive, must, LoadError } from "@/components/DuoProvider";
 import Sheet from "@/components/Sheet";
 import Photo from "@/components/Photo";
 import { heartPop } from "@/components/Confetti";
-import { fmt, dayKey, todayKey, fromKey, keyOf, greeting, hashDay } from "@/lib/format";
+import { fmt, dayKey, todayKey, fromKey, keyOf, greeting, dayNumber, ago } from "@/lib/format";
 import { MOODS } from "@/lib/palette";
 import { copy } from "@/lib/copy";
-import { uploadPhoto } from "@/lib/photos";
+import { uploadPhoto, freshPath, removeQuietly } from "@/lib/photos";
 import { buildModel, cycleInfo, PHASES } from "@/lib/cycle";
 
 const DAYS_BACK = 70;
 
 export default function TodayPage() {
-  const { supabase, me, partner, couple, tz, who, nameOf, toast } = useDuo();
+  const { supabase, me, partner, couple, tz, toast } = useDuo();
   const router = useRouter();
   const [greet, setGreet] = useState("Hello, you two 💛");
-  useEffect(() => { setGreet(greeting()); }, []);
+  useEffect(() => { setGreet(greeting(tz)); }, [tz]);
   const today = todayKey(tz);
-  const since = subDays(new Date(), DAYS_BACK).toISOString();
+  // one stable window per day — a fresh ISO string on every render would be a silent dependency
+  const since = useMemo(() => subDays(fromKey(today), DAYS_BACK).toISOString(), [today]);
 
-  const [d] = useLive(["entries", "checkins", "answers", "goals", "goal_contributions", "calendar_marks", "notes", "cycles", "profiles"], async () => {
+  const [d, refresh, error] = useLive(["entries", "checkins", "answers", "goals", "goal_contributions", "calendar_marks", "notes", "cycles", "profiles", "pings"], async () => {
     if (!couple) return null;
-    const [entries, streakDays, checkins, answers, questions, goals, contribs, marks, notes, cycles] = await Promise.all([
+    const [entries, streakDays, checkins, streaks, answers, questions, goals, contribs, marks, notes, cycles, pings] = await Promise.all([
       supabase.from("entries").select("*").eq("couple_id", couple.id).gte("happened_at", since).order("happened_at", { ascending: false }),
       supabase.from("entries").select("happened_at").eq("couple_id", couple.id).order("happened_at", { ascending: false }).limit(5000),
-      supabase.from("checkins").select("*").eq("couple_id", couple.id).gte("day", keyOf(subDays(fromKey(today), DAYS_BACK))),
+      supabase.from("checkins").select("*").eq("couple_id", couple.id).eq("day", today),
+      supabase.rpc("checkin_streaks"), // both streaks, computed where all rows are visible (RLS hides the partner's days from us)
       supabase.from("answers").select("*").eq("couple_id", couple.id).eq("day", today),
       supabase.from("questions").select("id,text").order("id"),
       supabase.from("goals").select("*").eq("couple_id", couple.id).order("sort").order("created_at"),
@@ -36,9 +38,10 @@ export default function TodayPage() {
       supabase.from("calendar_marks").select("*").eq("couple_id", couple.id),
       supabase.from("notes").select("*").eq("couple_id", couple.id).order("created_at", { ascending: false }).limit(20),
       supabase.from("cycles").select("*").eq("couple_id", couple.id),
+      supabase.from("pings").select("*").eq("couple_id", couple.id).gte("created_at", new Date(Date.now() - 36 * 3600000).toISOString()).order("created_at", { ascending: false }).limit(5),
     ]);
-    return { entries: entries.data || [], streakDays: streakDays.data || [], checkins: checkins.data || [], answers: answers.data || [], questions: questions.data || [],
-      goals: goals.data || [], contribs: contribs.data || [], marks: marks.data || [], notes: notes.data || [], cycles: cycles.data || [] };
+    return { entries: must(entries), streakDays: must(streakDays), checkins: must(checkins), streaks: must(streaks), answers: must(answers), questions: must(questions),
+      goals: must(goals), contribs: must(contribs), marks: must(marks), notes: must(notes), cycles: must(cycles), pings: must(pings) };
   }, [today]);
 
   const [ciOpen, setCiOpen] = useState(false);
@@ -56,11 +59,11 @@ export default function TodayPage() {
     const days = new Set(d.streakDays.map((e) => dayKey(e.happened_at, tz)));
     let streak = 0, cur = days.has(today) ? T : subDays(T, 1);
     while (days.has(keyOf(cur))) { streak++; cur = subDays(cur, 1); }
-    // check-in streaks, per person
-    const ciStreak = (uid) => { const s = new Set(d.checkins.filter((c) => c.user_id === uid).map((c) => c.day)); let n = 0, c = s.has(today) ? T : subDays(T, 1); while (s.has(keyOf(c))) { n++; c = subDays(c, 1); } return n; };
-    const myCi = d.checkins.find((c) => c.user_id === me.id && c.day === today) || null;
-    const theirCi = partner ? d.checkins.find((c) => c.user_id === partner.id && c.day === today) || null : null;
-    const q = d.questions.length ? d.questions[hashDay(today) % d.questions.length] : null;
+    const streakOf = (uid) => d.streaks.find((s) => s.user_id === uid)?.streak || 0;
+    const myCi = d.checkins.find((c) => c.user_id === me.id) || null;
+    const theirCi = partner ? d.checkins.find((c) => c.user_id === partner.id) || null : null;
+    // question of the day: a rotation, not a hash — no repeats until the whole pool has been asked
+    const q = d.questions.length ? d.questions[dayNumber(today) % d.questions.length] : null;
     const myA = d.answers.find((a) => a.user_id === me.id) || null;
     const theirA = partner ? d.answers.find((a) => a.user_id === partner.id) || null : null;
     // countdowns
@@ -74,7 +77,14 @@ export default function TodayPage() {
       else if (m.recurs === "yearly") { for (let k = 1; dt < T; k++) dt = addYears(base, k); }
       push(m.emoji, m.label, dt);
     });
-    if (couple.anniversary) { let a = fromKey(couple.anniversary), yrs = 0; while (a < T) { a = addYears(a, 1); } yrs = a.getFullYear() - fromKey(couple.anniversary).getFullYear(); push("💛", yrs ? `${yrs} ${yrs === 1 ? "year" : "years"} of us` : "our anniversary", a); }
+    if (couple.anniversary) {
+      // the calendar marks "our day" every month; the countdown agrees — and calls the yearly one by its name
+      const base = fromKey(couple.anniversary);
+      let next = base; for (let k = 1; next < T; k++) next = addMonths(base, k);
+      const yearly = next.getMonth() === base.getMonth() && next > base;
+      const yrs = next.getFullYear() - base.getFullYear();
+      push("💞", yearly ? `${yrs} ${yrs === 1 ? "year" : "years"} of us` : next.getTime() === base.getTime() ? "our anniversary" : "our day this month", next);
+    }
     d.goals.filter((g) => g.target_date && !g.completed_at).forEach((g) => push(g.emoji, g.name, fromKey(g.target_date)));
     cds.sort((a, b) => a.n - b.n);
     // jars
@@ -84,24 +94,27 @@ export default function TodayPage() {
     // partner's cycle, if she shares
     let cyc = null;
     if (partner) { const rows = d.cycles.filter((c) => c.user_id === partner.id); if (rows.length) { const m = buildModel(rows); const info = cycleInfo(T, m); if (info) cyc = { info, meta: PHASES[info.phase] }; } }
-    return { spent, mine, savedToday, streak, myCi, theirCi, myStreak: ciStreak(me.id), theirStreak: partner ? ciStreak(partner.id) : 0, q, myA, theirA, cds: cds.slice(0, 4), jars, teaser, cyc };
+    const lastPing = partner ? d.pings.find((p) => p.from_user === partner.id) || null : null;
+    return { spent, mine, savedToday, streak, myCi, theirCi, myStreak: streakOf(me.id), theirStreak: partner ? streakOf(partner.id) : 0, q, myA, theirA, cds: cds.slice(0, 4), jars, teaser, cyc, lastPing };
   }, [d, today, me?.id, partner?.id]);
 
   async function ping(e) {
     heartPop(e.currentTarget);
-    await supabase.from("pings").insert({ couple_id: couple.id, from_user: me.id });
-    setPingTxt(copy.pingSent(partner?.display_name || "they"));
-    setTimeout(() => setPingTxt(copy.pingBtn), 1800);
+    const { error } = await supabase.from("pings").insert({ couple_id: couple.id, from_user: me.id });
+    setPingTxt(error ? "that didn't send — try again 💛" : copy.pingSent(partner?.display_name || "they"));
+    setTimeout(() => setPingTxt(copy.pingBtn), 2400);
   }
 
-  if (!view) return <div className="greeting">{greet}</div>;
+  if (!view) return <><div className="greeting">{greet}</div><LoadError error={error} onRetry={refresh} what="today" /></>;
   const pName = partner?.display_name || "your person";
   const first = (s) => (s || "?").trim().split(" ")[0];
 
   return (
     <>
       <div className="greeting">{greet}</div>
-      <div className="date-line">{format(new Date(), "EEEE, d MMMM yyyy")}</div>
+      <div className="date-line">{format(fromKey(today), "EEEE, d MMMM yyyy")}</div>
+      <LoadError error={error} onRetry={refresh} what="the latest" />
+      {view.lastPing && <div className="q-hidden" style={{ marginBottom: 10 }}>{copy.pingFrom(first(pName), ago(view.lastPing.created_at))}</div>}
 
       <div className="today-grid">
         <div className="col-side">
@@ -127,13 +140,13 @@ export default function TodayPage() {
                   </button>
                 </div>
                 <div className="ci-cap">{view.theirCi ? (view.theirCi.note ? `“${view.theirCi.note}”` : "checked in ✓") : "· · ·"}</div>
-                <div className="ci-streak">{view.theirStreak ? `🔥 ${view.theirStreak}-day streak` : " "}</div>
+                <div className="ci-streak">{view.theirStreak ? `🔥 ${view.theirStreak}-day streak` : " "}</div>
               </div>
               {/* me */}
               <div className="ci-col">
                 <div className="ci-name" style={{ color: "var(--you-text)" }}>{first(me.display_name)} today</div>
                 <div className={"ci-ringwrap" + (view.myCi ? " lit" : "")}>
-                  <button className="ci-frame" id="zFrame" aria-label={view.myCi ? "Your check-in for today ✓" : "Add your check-in"} onClick={() => !view.myCi && setCiOpen(true)}>
+                  <button className="ci-frame" id="zFrame" aria-label={view.myCi ? "Your check-in for today — tap to change it" : "Add your check-in"} onClick={() => setCiOpen(true)}>
                     {view.myCi ? (
                       <div className="ci-photo" style={{ background: "linear-gradient(150deg,var(--peach),var(--butter))" }}>
                         {view.myCi.photo_path ? <Photo bucket="checkins" path={view.myCi.photo_path} /> : view.myCi.mood}
@@ -144,7 +157,7 @@ export default function TodayPage() {
                     {view.myCi?.mood && view.myCi.photo_path && <span className="ci-mood">{view.myCi.mood}</span>}
                   </button>
                 </div>
-                <div className="ci-cap">{view.myCi ? (view.myCi.note ? `“${view.myCi.note}”` : "checked in ✓") : " "}</div>
+                <div className="ci-cap">{view.myCi ? (view.myCi.note ? `“${view.myCi.note}”` : "checked in ✓") : " "}</div>
                 {view.myStreak > 0 && <div className="ci-streak">🔥 {view.myStreak}-day streak</div>}
                 {partner && <button className="ci-ping" onClick={ping}>{pingTxt}</button>}
               </div>
@@ -222,7 +235,7 @@ function CountUp({ n }) {
 }
 
 function Qotd({ q, myA, theirA, today }) {
-  const { supabase, me, partner, couple, nameOf, toast } = useDuo();
+  const { supabase, me, partner, couple, toast } = useDuo();
   const [txt, setTxt] = useState("");
   const [busy, setBusy] = useState(false);
   if (!q) return null;
@@ -260,18 +273,27 @@ function CheckInSheet({ open, onClose, today, existing }) {
   const [mood, setMood] = useState(null); const [file, setFile] = useState(null); const [note, setNote] = useState(""); const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState(null);
   const cam = useRef(), gal = useRef();
+  // editing today's check-in starts from what's already there
+  useEffect(() => { if (open) { setMood(existing?.mood || null); setNote(existing?.note || ""); setFile(null); } }, [open, existing?.id]);
   useEffect(() => { if (!file) { setPreview(null); return; } const u = URL.createObjectURL(file); setPreview(u); return () => URL.revokeObjectURL(u); }, [file]);
+  const canSave = !!(mood || file || existing?.photo_path);
   async function save() {
-    if (!(mood || file) || busy) return; setBusy(true);
+    if (!canSave || busy) return; setBusy(true);
     try {
-      const row = { couple_id: couple.id, user_id: me.id, day: today, mood, note: note.trim() };
-      if (file) row.photo_path = await uploadPhoto(supabase, "checkins", `${couple.id}/${me.id}/${today}.jpg`, file);
+      const row = { couple_id: couple.id, user_id: me.id, day: today, note: note.trim() };
+      if (mood || !existing) row.mood = mood; // never null out an earlier mood by accident
+      if (file) {
+        // a fresh object name per upload — the same path re-uploaded would be served stale for up to an hour
+        row.photo_path = await uploadPhoto(supabase, "checkins", freshPath(`${couple.id}/${me.id}`, today), file);
+      }
       // no new photo → leave photo_path out so a mood-only edit can't wipe an earlier photo
       const { error } = await supabase.from("checkins").upsert(row, { onConflict: "couple_id,user_id,day" });
       if (error) throw error;
-      // the check-in lands in the feed as a moment — only the FIRST time that day
+      if (file && existing?.photo_path) removeQuietly(supabase, "checkins", existing.photo_path);
+      // the check-in lands in the feed as a plain "checked in" moment — only the FIRST time that day, and WITHOUT
+      // the mood or the note: those stay behind the blur until the other person has checked in too (RLS on checkins)
       if (!existing) {
-        const { error: e2 } = await supabase.from("entries").insert({ couple_id: couple.id, user_id: me.id, kind: "moment", moment_emoji: mood || "📸", moment_tag: "checked in", note: note.trim(), photo_path: null });
+        const { error: e2 } = await supabase.from("entries").insert({ couple_id: couple.id, user_id: me.id, kind: "moment", moment_emoji: "📸", moment_tag: "checked in", note: "", photo_path: null });
         if (e2) console.warn(e2);
       }
       setMood(null); setFile(null); setNote(""); onClose();
@@ -280,7 +302,7 @@ function CheckInSheet({ open, onClose, today, existing }) {
   }
   return (
     <Sheet open={open} onClose={onClose}>
-      <h3 className="c-title">{me?.display_name}, today 📸</h3>
+      <h3 className="c-title">{me?.display_name}, today 📸{existing ? <small> · changing today's check-in</small> : null}</h3>
       {preview && <img className="ci-preview" src={preview} alt="your photo for today" />}
       <div className="photo-row">
         <button className={"photo-btn" + (file && file._src === "cam" ? " has" : "")} onClick={() => cam.current?.click()}>📷 take a photo</button>
@@ -290,7 +312,7 @@ function CheckInSheet({ open, onClose, today, existing }) {
       <input ref={gal} type="file" accept="image/*" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) { f._src = "gal"; setFile(f); } }} />
       <div className="mood-row">{MOODS.map((m) => <button key={m} className={"mood-btn" + (mood === m ? " sel" : "")} onClick={() => setMood(m)}>{m}</button>)}</div>
       <input className="note-input" placeholder="one line about today… (optional)" maxLength={60} value={note} onChange={(e) => setNote(e.target.value)} />
-      <button className="save-btn" disabled={!(mood || file) || busy} onClick={save}>{busy ? "posting…" : "Check in 💛"}</button>
+      <button className="save-btn" disabled={!canSave || busy} onClick={save}>{busy ? "posting…" : existing ? "Update my check-in 💛" : "Check in 💛"}</button>
     </Sheet>
   );
 }

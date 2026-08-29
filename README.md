@@ -8,10 +8,10 @@ Prereqs: Docker Desktop running, Node 20+.
 ```bash
 docker compose up --build     # run from this duo/ directory
 ```
-That's it. Compose starts a `supabase` supervisor container (the Supabase CLI, talking to your Docker daemon) which brings up Postgres, Auth, REST, Realtime, Storage, Studio and Mailpit, applies `supabase/migrations` + `supabase/seed.sql` + buckets + the email template — then builds and starts the `web` container once Supabase is healthy. `docker compose down` stops everything and keeps the data.
+That's it. Compose starts a `supabase` supervisor container (the Supabase CLI, talking to your Docker daemon) which brings up Postgres, Auth, REST, Realtime, Storage, Studio and Mailpit, applies `supabase/migrations` + `supabase/seed.sql` + buckets — then builds and starts the `web` container once Supabase is healthy. `docker compose down` stops everything and keeps the data.
 
 - App: http://localhost:3000
-- Emails (magic link + 6-digit code): http://127.0.0.1:54324 (Mailpit)
+- Mailpit (unused by the app — sign-in is email + password, no emails are sent): http://127.0.0.1:54324
 - Supabase Studio: http://127.0.0.1:54323
 - Stop everything: `docker compose down` (data kept) · wipe + re-migrate: `npm run db:reset`
 
@@ -30,6 +30,12 @@ The `web` container runs `next dev` with your source bind-mounted, so every save
 
 ## Two-phone test
 Sign in as A → onboarding → **Start a Duo** → copy the invite link. In a second browser/profile sign in as B → open the link → sign in → linked. A third account sees nothing (see `supabase/schema.md` and `scripts/negative-test.mjs`).
+
+## Security notes (audit 2026-08-29 → `errors-v1.md`)
+- Invite codes are 10 chars, live 48 h, and `invite_preview` returns no name to anonymous callers.
+- Every child row (contribution, heart, list item, pinned goal, fact, category) must point at a parent inside the caller's couple — enforced in RLS (`20260829000002_audit_fixes.sql`).
+- `?next=` after login only accepts same-origin paths. Security headers + a report-only CSP ship from `next.config.mjs`.
+- Still open on purpose: no password reset / email verification (see errors-v1 A1/A2).
 
 ## Production
 Supabase project + Vercel; env vars from `.env.local.example`. `vercel.json` schedules the keep-alive and cleanup crons (`CRON_SECRET` header).

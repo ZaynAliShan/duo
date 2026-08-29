@@ -2,15 +2,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { addMonths, format, getDay, getDaysInMonth, isAfter, startOfMonth } from "date-fns";
-import { useDuo, useLive } from "@/components/DuoProvider";
-import { fmt, fmtShort, dayKey, todayKey, fromKey, keyOf } from "@/lib/format";
+import { useDuo, useLive, must, LoadError } from "@/components/DuoProvider";
+import { fmt, fmtShort, dayKey, todayKey, fromKey, keyOf, ordinal } from "@/lib/format";
 import { copy } from "@/lib/copy";
 import { buildModel, cycleInfo, PHASES } from "@/lib/cycle";
 import { fetchCycle, useCycleOwner } from "@/lib/queries/cycle";
 
 const DOWS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 const MARK_KINDS = [["bill", "💡"], ["trip", "🏔"], ["birthday", "🎂"], ["anniv", "💞"], ["other", "📌"]];
-const ANNIV_LINES = ["another month of choosing each other 💛", "our day, big deal. happy monthiversary.", "the 9th never goes unnoticed around here 💞"];
+const ANNIV_LINES = (nth) => ["another month of choosing each other 💛", "our day, big deal. happy monthiversary.", `the ${nth} never goes unnoticed around here 💞`];
 
 export default function CalendarsPage() {
   const { view } = useParams();
@@ -18,7 +18,7 @@ export default function CalendarsPage() {
   const v = view?.[0] || "hub";
   const { supabase, couple, tz } = useDuo();
   const today = todayKey(tz);
-  const [d] = useLive(["entries", "goal_contributions", "goals", "calendar_marks", "notes", "cycles", "cycle_logs", "profiles"], async () => {
+  const [d, refresh, error] = useLive(["entries", "goal_contributions", "goals", "calendar_marks", "notes", "cycles", "cycle_logs", "profiles"], async () => {
     if (!couple) return null;
     const [e, c, g, m, n, cyc] = await Promise.all([
       supabase.from("entries").select("*").eq("couple_id", couple.id).order("happened_at", { ascending: false }),
@@ -28,11 +28,11 @@ export default function CalendarsPage() {
       supabase.from("notes").select("*").eq("couple_id", couple.id).not("pinned_day", "is", null),
       fetchCycle(supabase, couple.id),
     ]);
-    return { entries: (e.data || []).map((x) => ({ ...x, k: dayKey(x.happened_at, tz) })), contribs: (c.data || []).map((x) => ({ ...x, k: dayKey(x.created_at, tz) })),
-      goals: g.data || [], marks: m.data || [], notes: n.data || [], ...cyc };
+    return { entries: must(e).map((x) => ({ ...x, k: dayKey(x.happened_at, tz) })), contribs: must(c).map((x) => ({ ...x, k: dayKey(x.created_at, tz) })),
+      goals: must(g), marks: must(m), notes: must(n), ...cyc };
   });
   useEffect(() => { window.scrollTo({ top: 0 }); }, [v]);
-  if (!d) return <h2 className="pane-title">Our calendars 📅</h2>;
+  if (!d) return <><h2 className="pane-title">Our calendars 📅</h2><LoadError error={error} onRetry={refresh} what="the calendars" /></>;
   if (v === "fin") return <Financial d={d} today={today} back={() => router.push("/cal")} />;
   if (v === "cycle") return <CycleCal d={d} today={today} back={() => router.push("/cal")} />;
   return <Hub d={d} today={today} go={(x) => router.push("/cal/" + x)} />;
@@ -62,7 +62,7 @@ function Hub({ d, today, go }) {
         <button className="hub-card" id="hubCycCard" onClick={() => go("cycle")}>
           <span className="wm">🌸</span><span className="hub-emoji">🌸</span>
           <div className="hub-info">
-            <div className="hub-name">{own?.isMe ? "My" : "Her"} Cycle Calendar</div>
+            <div className="hub-name">{own?.nobody ? "Cycle Calendar" : own?.isMe ? "My Cycle Calendar" : "Her Cycle Calendar"}</div>
             <div className="hub-line">{info ? <><b>day {info.day} · {PHASES[info.phase].name.toLowerCase()} {PHASES[info.phase].e}</b> · period expected {format(model.nextStart, "MMM d")}</> : "nothing logged yet"}</div>
             <div className="hub-meta">period days · predictions · the fertile window</div>
           </div><span className="hub-go">→</span>
@@ -120,10 +120,21 @@ function Financial({ d, today, back }) {
   const selFuture = g.sel > today;
   const [adding, setAdding] = useState(false);
   const [mLabel, setMLabel] = useState(""); const [mKind, setMKind] = useState("other"); const [mRec, setMRec] = useState("none");
+  const [armedMark, setArmedMark] = useState(null);
+  useEffect(() => { if (!armedMark) return; const t = setTimeout(() => setArmedMark(null), 3500); return () => clearTimeout(t); }, [armedMark]);
+  const { toast } = useDuo();
   async function addMark() {
     if (!mLabel.trim()) return;
-    await supabase.from("calendar_marks").insert({ couple_id: couple.id, day: g.sel, label: mLabel.trim(), emoji: MARK_KINDS.find((k) => k[0] === mKind)[1], kind: mKind, recurs: mRec, created_by: me.id });
+    const { error } = await supabase.from("calendar_marks").insert({ couple_id: couple.id, day: g.sel, label: mLabel.trim(), emoji: MARK_KINDS.find((k) => k[0] === mKind)[1], kind: mKind, recurs: mRec, created_by: me.id });
+    if (error) return toast("couldn't mark that — " + error.message);
     setMLabel(""); setAdding(false);
+  }
+  // a recurring mark (a bill, a birthday) disappears from every month at once — ask twice
+  async function removeMark(m) {
+    if (armedMark !== m.id) { setArmedMark(m.id); return; }
+    setArmedMark(null);
+    const { error } = await supabase.from("calendar_marks").delete().eq("id", m.id);
+    if (error) toast("couldn't remove that — " + error.message);
   }
   function burst(el) {
     const r = el.getBoundingClientRect(); const em = ["💞", "💛", "💕", "✨", "💗", "💘", "🥰"];
@@ -179,7 +190,7 @@ function Financial({ d, today, back }) {
               {g.sel === today && <> <span className="dp-today">today</span></>}{selIsAnniv && <> <span className="dp-anniv">💞 our day</span></>}</h4>
             {selData.spent > 0 && <span className="dp-total">{fmt(selData.spent)}</span>}
           </div>
-          {selIsAnniv && <div className="pinned-note anniv-note">💞 the {Number(g.sel.slice(8))}th — {ANNIV_LINES[g.month.getMonth() % 3]}</div>}
+          {selIsAnniv && <div className="pinned-note anniv-note">💞 the {ordinal(Number(g.sel.slice(8)))} — {ANNIV_LINES(ordinal(Number(g.sel.slice(8))))[g.month.getMonth() % 3]}</div>}
           {!selData.list.length && !selData.contribs.length && !selMarks.length && !selNotes.length && !selIsAnniv && (
             <div className="dp-empty"><span className="leaf">{selFuture ? "🌱" : "🌿"}</span>{selFuture ? copy.futureDay : copy.quietDay}</div>
           )}
@@ -191,7 +202,7 @@ function Financial({ d, today, back }) {
               <span className="mtxt">into {goal?.name} {goal?.emoji}{c.note ? ` — ${c.note}` : ""}</span><span className={"who-pill " + (who(c.user_id) === "you" ? "wp-you" : "wp-him")}>{letterOf(c.user_id)}</span><span className="amt">＋{fmt(c.amount)}</span></div>); })}
           {selMarks.map((m) => (
             <div className="mini" key={m.id}><span className="mcat" style={{ background: "var(--chip)" }}>{m.emoji}</span><span className="mtxt">{m.label}{m.recurs !== "none" ? ` · every ${m.recurs === "monthly" ? "month" : "year"}` : ""}</span>
-              <button className="mx" aria-label="Remove" onClick={() => supabase.from("calendar_marks").delete().eq("id", m.id)}>✕</button></div>))}
+              <button className="mx" aria-label={armedMark === m.id ? "Tap again to remove" : "Remove"} style={armedMark === m.id ? { background: "var(--rose)", color: "#fff", width: "auto", padding: "0 8px" } : undefined} onClick={() => removeMark(m)}>{armedMark === m.id ? (m.recurs !== "none" ? "every time?" : "sure?") : "✕"}</button></div>))}
           {selNotes.map((n) => <div className="pinned-note" key={n.id}>📌 {n.kind === "list" ? n.title : n.body} <small style={{ opacity: .7 }}>— {nameOf(n.user_id)}</small></div>)}
           {adding ? (
             <div className="mark-add">
@@ -217,7 +228,7 @@ function CycleCal({ d, today, back }) {
   return (
     <div>
       <button className="gh-back" onClick={back}>← back to calendars</button>
-      <h2 className="pane-title">{own?.isMe ? "My" : "Her"} cycle calendar 🌸</h2>
+      <h2 className="pane-title">{own?.nobody ? "Cycle calendar 🌸" : own?.isMe ? "My cycle calendar 🌸" : "Her cycle calendar 🌸"}</h2>
       <p className="pane-sub">Tap a day — rose is the period, outlined days are predicted, butter is the fertile window.</p>
       <div className="cal-layout">
         <div className="cal-card">

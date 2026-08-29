@@ -46,8 +46,8 @@ const FEATURES = [
     body: "Tap ＋, type the amount, pick a category — ten seconds, and your partner sees it instantly. Plus a daily mood + photo check-in, a question of the day, and 💛 taps on each other's entries.",
     mock: (
       <div className="mk mk-today">
-        <div className="mk-row"><span className="av you">H</span><b>₨500</b><span className="mk-tag">Food</span></div>
-        <div className="mk-row"><span className="av him">Z</span><b>₨1,200</b><span className="mk-tag">Petrol</span></div>
+        <div className="mk-row"><span className="av you">H</span><b>Rs 500</b><span className="mk-tag">Food</span></div>
+        <div className="mk-row"><span className="av him">Z</span><b>Rs 1,200</b><span className="mk-tag">Transport</span></div>
         <div className="mk-plus">＋</div>
       </div>
     ),
@@ -84,7 +84,7 @@ const FEATURES = [
   {
     key: "us", e: "💌", name: "Us",
     line: "Your story so far — and a letter every month.",
-    body: "Totals since day one, who spent what, soft monthly caps — never a scoreboard. On the 1st, Duo writes a recap letter to open together. Every photo you kept, as a polaroid wall.",
+    body: "Totals since day one, who spent what, soft monthly caps — never a scoreboard. Each month Duo writes a recap letter from last month's entries, to open together. Every photo you kept lives next door in Memories, as a polaroid wall.",
     mock: (
       <div className="mk mk-us">
         <div className="env"><div className="flap" /><div className="letter">Dear us…</div></div>
@@ -149,7 +149,7 @@ export default function Landing() {
             <div className="entry">
               {/* each phone shows what the other one added: hers has Z's entry (she taps 💛), his has H's */}
               <div className="en-top"><span className="av him">Z</span><span className="en-who"><b>Z</b> added</span><span className="en-time">just now</span></div>
-              <div className="en-amt">₨800 <small>Food</small></div>
+              <div className="en-amt">Rs 800 <small>Food</small></div>
               <div className="en-like"><span className="hb">💛</span><span className="hl">You tapped 💛</span></div>
             </div>
           </div>
@@ -157,7 +157,7 @@ export default function Landing() {
             <div className="ph-head"><span className="av him">Z</span><span>his phone</span></div>
             <div className="entry ghost">
               <div className="en-top"><span className="av you">H</span><span className="en-who"><b>H</b> added</span><span className="en-time">just now</span></div>
-              <div className="en-amt">₨500 <small>Food</small></div>
+              <div className="en-amt">Rs 500 <small>Food</small></div>
             </div>
             <div className="tap-hand">👆</div>
           </div>
@@ -179,7 +179,7 @@ export default function Landing() {
 
       <section className="ld-feats">
         <p className="eyebrow rv">what's inside</p>
-        <h2 className="rv">Five rooms, one house.</h2>
+        <h2 className="rv">One house, eight little rooms — here are five.</h2>
         <div className="feat-list">
           {FEATURES.map((f, i) => (
             <article key={f.key} className={"feat rv" + (i % 2 ? " flip" : "")} style={{ "--i": i }}>

@@ -3,6 +3,7 @@ import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { copy } from "@/lib/copy";
+import { safeNext } from "@/lib/format";
 
 export default function LoginPage() {
   return <Suspense fallback={null}><LoginInner /></Suspense>;
@@ -23,7 +24,8 @@ function LoginInner() {
     try { const e = localStorage.getItem("duo-login-email"); if (e) setEmail(e); } catch {}
   }, []);
 
-  const next = params.get("next") || "/today";
+  // only a same-origin path may be the destination — `?next=https://…` is a phishing primitive
+  const next = safeNext(params.get("next"));
   const go = () => { try { localStorage.setItem("duo-login-email", email.trim()); } catch {} router.replace(next); router.refresh(); };
 
   async function signIn(e) {

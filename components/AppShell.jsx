@@ -10,6 +10,8 @@ import Photo from "./Photo";
 import NuxTour from "./NuxTour";
 import { flush, queued } from "@/lib/offline-queue";
 import { fromKey } from "@/lib/format";
+import { signOutClean } from "@/lib/session";
+import { readInvite, clearInviteCookie } from "@/lib/invite-cookie";
 
 export const NAV = [
   { href: "/today", ico: "🏠", label: "Today", tab: "Today" },
@@ -32,11 +34,12 @@ export function Avatar({ profile, cls, size }) {
 }
 
 export default function AppShell({ children }) {
-  const { me, partner, couple, loading, theme, flipTheme, supabase, toast, subscribe } = useDuo();
+  const { me, partner, couple, loading, loadError, reload, theme, flipTheme, supabase, toast } = useDuo();
   const pathname = usePathname();
   const router = useRouter();
   const [addOpen, setAddOpen] = useState(false);
   const [pending, setPending] = useState(0);
+  const [stuck, setStuck] = useState(false);
   const bare = pathname.startsWith("/onboarding") || pathname.startsWith("/waiting");
 
   // offline queue: replay when we're back
@@ -55,8 +58,36 @@ export default function AppShell({ children }) {
 
   useEffect(() => { document.documentElement.dataset.theme = theme; }, [theme]);
 
+  // an invite link opened by someone who is already in a Duo: say so once, then forget the code
+  useEffect(() => {
+    if (!me?.couple_id) return;
+    if (readInvite()) { clearInviteCookie(); toast("you're already in a Duo — that invite was ignored 💛"); }
+  }, [me?.couple_id]);
+
+  // "opening Duo…" must not be forever: after 8 s show what's wrong and a way out
+  useEffect(() => {
+    if (!loading && me) { setStuck(false); return; }
+    const t = setTimeout(() => setStuck(true), 8000);
+    return () => clearTimeout(t);
+  }, [loading, me]);
+
   if (bare) return <>{children}<Confetti /></>;
-  if (loading || !me) return <div className="center-page"><div className="paper skeleton"><div className="we">💛</div><p>opening Duo…</p></div></div>;
+  if (loading || !me) {
+    return (
+      <div className="center-page"><div className="paper skeleton"><div className="we">💛</div>
+        <p>opening Duo…</p>
+        {stuck && (
+          <div className="kind-msg" role="alert">
+            {loadError ? `couldn't reach Duo — ${loadError}` : "your profile hasn't shown up yet — this can happen right after sign-up."}
+            <div style={{ marginTop: 8 }}>
+              <button className="link-btn" onClick={() => { setStuck(false); reload(); }}>try again</button> ·{" "}
+              <button className="link-btn" onClick={async () => { await signOutClean(supabase); router.replace("/login"); router.refresh(); }}>sign out</button>
+            </div>
+          </div>
+        )}
+      </div></div>
+    );
+  }
 
   const since = couple?.together_since || couple?.anniversary;
   const days = since ? differenceInCalendarDays(new Date(), fromKey(since)) : null;

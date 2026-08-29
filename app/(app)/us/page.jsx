@@ -2,20 +2,22 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { addMonths, differenceInCalendarDays, endOfMonth, format, startOfMonth, subDays, subMonths } from "date-fns";
-import { useDuo, useLive } from "@/components/DuoProvider";
+import { useDuo, useLive, must, LoadError } from "@/components/DuoProvider";
 import MonthFilter, { filterLabel, filterRange, useMonthFilter } from "@/components/MonthFilter";
 import Photo from "@/components/Photo";
-import { fmt, dayKey, fromKey, keyOf } from "@/lib/format";
+import { fmt, dayKey, fromKey, parseAmount } from "@/lib/format";
 import { CAT_COLORS, SWATCHES } from "@/lib/palette";
 import { buildRecap } from "@/lib/recap";
-import { uploadPhoto } from "@/lib/photos";
+import { uploadPhoto, freshPath, removeQuietly } from "@/lib/photos";
+import { signOutClean } from "@/lib/session";
+import { copy } from "@/lib/copy";
 
 export default function UsPage() {
   const { supabase, couple, me, partner, tz, categories } = useDuo();
   const [f, setF, today] = useMonthFilter();
   const [mode, setMode] = useState("spend");
   const [whoF, setWhoF] = useState("all");
-  const [d] = useLive(["entries", "goal_contributions", "goals", "categories", "couples", "profiles"], async () => {
+  const [d, refresh, error] = useLive(["entries", "goal_contributions", "goals", "categories", "couples", "profiles"], async () => {
     if (!couple) return null;
     const [e, c, g, r] = await Promise.all([
       supabase.from("entries").select("*").eq("couple_id", couple.id).order("happened_at"),
@@ -23,11 +25,12 @@ export default function UsPage() {
       supabase.from("goals").select("*").eq("couple_id", couple.id),
       supabase.from("recaps").select("*").eq("couple_id", couple.id),
     ]);
-    return { entries: (e.data || []).map((x) => ({ ...x, k: dayKey(x.happened_at, tz) })), contribs: (c.data || []).map((x) => ({ ...x, k: dayKey(x.created_at, tz) })), goals: g.data || [], recaps: r.data || [] };
+    return { entries: must(e).map((x) => ({ ...x, k: dayKey(x.happened_at, tz) })), contribs: must(c).map((x) => ({ ...x, k: dayKey(x.created_at, tz) })), goals: must(g), recaps: must(r) };
   });
-  if (!d) return <h2 className="pane-title">Us 💸</h2>;
+  if (!d) return <><h2 className="pane-title">Us 💸</h2><LoadError error={error} onRetry={refresh} what="this page" /></>;
   return (
     <>
+      <LoadError error={error} onRetry={refresh} what="the latest" />
       <Story d={d} today={today} />
       <MoneyPicture d={d} f={f} setF={setF} today={today} mode={mode} setMode={setMode} whoF={whoF} setWhoF={setWhoF} />
       <Budgets d={d} today={today} />
@@ -69,7 +72,7 @@ function Story({ d, today }) {
     <section className="us-sec">
       <div className="us-sec-head"><h3 className="us-sec-title">Our story 💛</h3><p className="us-sec-hint">All-time keepsakes — the filters below never touch these.</p></div>
       <div className="forever">
-        <div className="f-stat"><div className="v"><Count n={stats.saved} prefix="Rs " /></div><div className="k">saved together</div></div>
+        <div className="f-stat"><div className="v"><Count n={stats.saved} prefix="Rs " /></div><div className="k">saved together <small style={{ display: "block", fontWeight: 600, opacity: .75 }}>jars + what stayed under the soft caps</small></div></div>
         <div className="f-stat"><div className="v"><Count n={stats.longest} suffix=" days" /></div><div className="k">longest streak</div></div>
         <div className="f-stat"><div className="v"><Count n={stats.done} suffix=" 🎉" /></div><div className="k">goals completed</div></div>
         <div className="f-stat"><div className="v">{since ? format(fromKey(since), "MMM d, yyyy") : "—"}</div><div className="k">together since 💛</div></div>
@@ -202,7 +205,7 @@ function Donut({ parts }) {
 
 /* budgets-lite — quiet caps, information not alarms */
 function Budgets({ d, today }) {
-  const { supabase, categories } = useDuo();
+  const { supabase, categories, toast } = useDuo();
   const [open, setOpen] = useState(false);
   const m = today.slice(0, 7);
   const spentOf = (id) => d.entries.filter((e) => e.kind === "expense" && e.category_id === id && e.k.startsWith(m)).reduce((s, e) => s + Number(e.amount), 0);
@@ -216,7 +219,7 @@ function Budgets({ d, today }) {
           <div className="cap-row" key={c.id} style={{ flexWrap: "wrap" }}>
             <span className="mcat" style={{ background: c.color }}>{c.emoji}</span>
             <span className="name">{c.name}<div style={{ fontSize: 12, color: "var(--ink-soft)", fontWeight: 600 }}>{cap ? `${fmt(spent)} of ${fmt(cap)}${spent <= cap ? " · room to breathe" : " · a little over — it happens"}` : fmt(spent) + " this month"}</div></span>
-            {open ? <input type="number" inputMode="numeric" placeholder="cap (Rs)" defaultValue={c.monthly_cap ? Math.round(c.monthly_cap) : ""} onBlur={(e) => supabase.from("categories").update({ monthly_cap: e.target.value ? Number(e.target.value) : null }).eq("id", c.id)} />
+            {open ? <input type="number" inputMode="numeric" placeholder="cap (Rs)" defaultValue={c.monthly_cap ? Math.round(c.monthly_cap) : ""} min="0" onBlur={async (e) => { const v = parseAmount(e.target.value); const { error } = await supabase.from("categories").update({ monthly_cap: v ?? null }).eq("id", c.id); if (error) toast("couldn't save that cap — " + error.message); }} />
               : cap ? <span style={{ fontWeight: 800, fontVariantNumeric: "tabular-nums" }}>{pct}%</span> : null}
             {cap > 0 && <div className="cap-bar" style={{ flexBasis: "100%" }}><div style={{ width: pct + "%", background: spent <= cap ? "var(--sage)" : "var(--butter-deep)" }} /></div>}
           </div>); })}
@@ -252,7 +255,7 @@ function Recap({ d, today }) {
   const name = format(fromKey(lastM + "-01"), "MMMM");
   return (
     <section className="us-sec">
-      <div className="us-sec-head"><div className="us-eyebrow">Last month</div><h3 className="us-sec-title">The recap card 💌</h3><p className="us-sec-hint">Duo writes one on the 1st — open it together.</p></div>
+      <div className="us-sec-head"><div className="us-eyebrow">Last month</div><h3 className="us-sec-title">The recap card 💌</h3><p className="us-sec-hint">Written from last month's entries the first time either of you opens Us in a new month — open it together.</p></div>
       <details className="recap-fold">
         <summary><span className="rf-ico">💌</span><span className="rf-closed">Open {name}'s recap</span><span className="rf-open">Tuck it back in 💛</span></summary>
         <div className="recap">
@@ -273,24 +276,48 @@ function Recap({ d, today }) {
 
 /* profile + couple settings */
 function Settings() {
-  const { supabase, me, partner, couple, reload, toast, theme, flipTheme } = useDuo();
+  const { supabase, me, partner, couple, reload, toast, theme, flipTheme, categories } = useDuo();
   const router = useRouter();
   const [name, setName] = useState(me.display_name); const [color, setColor] = useState(me.avatar_color);
-  const [armed, setArmed] = useState(false);
-  const fileRef = useRef();
-  useEffect(() => { setName(me.display_name); setColor(me.avatar_color); }, [me]);
+  const [armed, setArmed] = useState(null); // 'leave' | 'delete'
+  const [tzPending, setTzPending] = useState(null);
+  const nameRef = useRef(); const fileRef = useRef();
+  // a realtime `profiles` event must not wipe what's being typed right now
+  useEffect(() => { if (document.activeElement !== nameRef.current) setName(me.display_name); setColor(me.avatar_color); }, [me]);
+  useEffect(() => { if (!armed) return; const t = setTimeout(() => setArmed(null), 6000); return () => clearTimeout(t); }, [armed]);
   const saveProfile = async (patch) => { const { error } = await supabase.from("profiles").update(patch).eq("id", me.id); if (error) toast(error.message); else { reload(); } };
   const saveCouple = async (patch) => { const { error } = await supabase.from("couples").update(patch).eq("id", couple.id); if (error) toast(error.message); else reload(); };
-  async function pickPhoto(e) { const f = e.target.files?.[0]; if (!f) return; try { const p = await uploadPhoto(supabase, "avatars", `${me.id}/avatar.jpg`, f); await saveProfile({ avatar_url: p + "" }); } catch (err) { toast("that photo didn't upload 💛"); } }
-  async function leave() { if (!armed) { setArmed(true); return; } await supabase.rpc("leave_couple"); await reload(); router.replace("/onboarding"); }
-  async function signOut() { await supabase.auth.signOut(); router.replace("/login"); router.refresh(); }
+  async function pickPhoto(e) {
+    const f = e.target.files?.[0]; if (!f) return;
+    try {
+      // new object name each time (old URL caches can't show a stale face), then the previous file is tidied away
+      const p = await uploadPhoto(supabase, "avatars", freshPath(me.id, "avatar"), f);
+      await saveProfile({ avatar_url: p });
+      if (me.avatar_url && me.avatar_url !== p) removeQuietly(supabase, "avatars", me.avatar_url);
+    } catch (err) { toast(err?.message?.includes("format") ? err.message : "that photo didn't upload 💛"); }
+  }
+  async function leave() {
+    if (armed !== "leave") { setArmed("leave"); return; }
+    const { error } = await supabase.rpc("leave_couple");
+    if (error) return toast("couldn't leave — " + error.message);
+    await reload(); router.replace("/onboarding");
+  }
+  async function deleteAccount() {
+    if (armed !== "delete") { setArmed("delete"); return; }
+    const { error } = await supabase.rpc("delete_account");
+    if (error) return toast("couldn't delete — " + error.message);
+    await signOutClean(supabase); router.replace("/"); router.refresh();
+  }
+  async function signOut() { await signOutClean(supabase); router.replace("/login"); router.refresh(); }
+  // changing the timezone re-buckets every entry's "day" (streaks, day totals, calendars) — confirm before it lands
+  function pickTz(v) { if (v === couple.timezone) return; if (tzPending !== v) { setTzPending(v); return; } setTzPending(null); saveCouple({ timezone: v }); }
   const tzs = ["Asia/Karachi", "Asia/Dubai", "Asia/Kolkata", "Europe/London", "Europe/Berlin", "America/New_York", "America/Los_Angeles", "Australia/Sydney"];
   return (
     <section className="us-sec" id="settings">
       <div className="us-sec-head"><div className="us-eyebrow">Settings</div><h3 className="us-sec-title">You & your Duo ⚙️</h3></div>
       <div className="settings-card">
         <h4>You</h4>
-        <div className="settings-row"><span className="k">name</span><input className="note-input" style={{ width: 180, marginBottom: 0 }} value={name} maxLength={24} onChange={(e) => setName(e.target.value)} onBlur={() => name.trim() && name !== me.display_name && saveProfile({ display_name: name.trim() })} /></div>
+        <div className="settings-row"><span className="k">name</span><input ref={nameRef} className="note-input" style={{ width: 180, marginBottom: 0 }} value={name} maxLength={24} onChange={(e) => setName(e.target.value)} onBlur={() => name.trim() && name.trim() !== me.display_name && saveProfile({ display_name: name.trim() })} /></div>
         <div className="settings-row"><span className="k">colour</span><div className="swatch-row" style={{ margin: 0 }}>{SWATCHES.map((s) => <button key={s.key} className={"swatch" + (color === s.main ? " sel" : "")} style={{ background: s.main, width: 30, height: 30 }} onClick={() => { setColor(s.main); saveProfile({ avatar_color: s.main }); }} aria-label={s.key} />)}</div></div>
         <div className="settings-row"><span className="k">photo</span><span style={{ display: "flex", alignItems: "center", gap: 10 }}><div className="avatar you" style={{ width: 34, height: 34 }}>{me.avatar_url ? <Photo bucket="avatars" path={me.avatar_url} /> : name.charAt(0)}</div><button className="link-btn" onClick={() => fileRef.current?.click()}>change</button><input ref={fileRef} type="file" accept="image/*" hidden onChange={pickPhoto} /></span></div>
         <div className="settings-row"><span className="k">theme</span><button className="link-btn" onClick={flipTheme}>{theme === "dark" ? "☀️ switch to light" : "🌙 switch to dark"}</button></div>
@@ -299,11 +326,57 @@ function Settings() {
       <div className="settings-card">
         <h4>Your Duo {partner ? `· ${me.display_name} & ${partner.display_name}` : ""}</h4>
         <div className="settings-row"><span className="k">together since</span><input type="date" defaultValue={couple.together_since || ""} onChange={(e) => saveCouple({ together_since: e.target.value || null })} /></div>
-        <div className="settings-row"><span className="k">anniversary</span><input type="date" defaultValue={couple.anniversary || ""} onChange={(e) => saveCouple({ anniversary: e.target.value || null })} /></div>
-        <div className="settings-row"><span className="k">timezone (what "today" means)</span><select className="note-input" style={{ width: 200, marginBottom: 0 }} value={couple.timezone} onChange={(e) => saveCouple({ timezone: e.target.value })}>{[couple.timezone, ...tzs].filter((v, i, a) => a.indexOf(v) === i).map((t) => <option key={t}>{t}</option>)}</select></div>
+        <div className="settings-row"><span className="k">anniversary <small style={{ display: "block", fontWeight: 600, opacity: .7 }}>marked every month on the calendar; the yearly one gets its name</small></span><input type="date" defaultValue={couple.anniversary || ""} onChange={(e) => saveCouple({ anniversary: e.target.value || null })} /></div>
+        <div className="settings-row" style={{ flexWrap: "wrap" }}><span className="k">timezone (what "today" means)</span><select className="note-input" style={{ width: 200, marginBottom: 0 }} value={tzPending || couple.timezone} onChange={(e) => pickTz(e.target.value)}>{[couple.timezone, ...tzs].filter((v, i, a) => a.indexOf(v) === i).map((t) => <option key={t}>{t}</option>)}</select>
+          {tzPending && <div className="kind-msg" style={{ flexBasis: "100%" }}>this moves every entry's "day" for both of you — streaks and day totals shift. <button className="link-btn" onClick={() => pickTz(tzPending)}>yes, switch to {tzPending}</button> · <button className="link-btn" onClick={() => setTzPending(null)}>keep {couple.timezone}</button></div>}
+        </div>
         {!partner && <div className="settings-row"><span className="k">your person</span><button className="link-btn" onClick={() => router.push("/waiting")}>invite them →</button></div>}
-        <div className="settings-row"><span className="k">account</span><span><button className="link-btn" onClick={signOut}>sign out</button><button className="link-btn" onClick={leave} style={{ color: "var(--ink-soft)" }}>{armed ? "really leave? tap again 🥺" : "leave this Duo"}</button></span></div>
+      </div>
+      <Categories categories={categories} />
+      <div className="settings-card">
+        <h4>Account</h4>
+        <div className="settings-row"><span className="k">this device</span><button className="link-btn" onClick={signOut}>sign out</button></div>
+        <div className="settings-row" style={{ flexWrap: "wrap" }}><span className="k">this Duo</span><button className="link-btn" onClick={leave} style={{ color: "var(--ink-soft)" }}>{armed === "leave" ? "yes, leave 🥺" : "leave this Duo"}</button>
+          {armed === "leave" && <div className="kind-msg" style={{ flexBasis: "100%" }}>{copy.leaveWarn}</div>}</div>
+        <div className="settings-row" style={{ flexWrap: "wrap" }}><span className="k">my account</span><button className="link-btn" onClick={deleteAccount} style={{ color: "var(--ink-soft)" }}>{armed === "delete" ? "yes, delete my account" : "delete my account"}</button>
+          {armed === "delete" && <div className="kind-msg" style={{ flexBasis: "100%" }}>{copy.deleteWarn}</div>}</div>
       </div>
     </section>
+  );
+}
+
+/* categories — add, rename, re-emoji, archive (archived ones keep their history, just leave the chips) */
+function Categories({ categories }) {
+  const { supabase, couple, toast } = useDuo();
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState(""); const [emoji, setEmoji] = useState("🌀");
+  const write = async (q, what) => { const { error } = await q; if (error) toast(`couldn't ${what} — ${error.message}`); };
+  const live = categories.filter((c) => !c.archived), gone = categories.filter((c) => c.archived);
+  async function add() {
+    const t = name.trim(); if (!t) return;
+    await write(supabase.from("categories").insert({ couple_id: couple.id, name: t.slice(0, 20), emoji: (emoji || "🌀").slice(0, 4), color: "#EDE7DE", sort: categories.length }), "add that category");
+    setName(""); setEmoji("🌀");
+  }
+  return (
+    <div className="settings-card">
+      <h4>Categories 🏷 <button className="link-btn" style={{ marginLeft: 8 }} onClick={() => setOpen(!open)}>{open ? "done ✓" : "edit"}</button></h4>
+      {!open ? <div className="chip-row">{live.map((c) => <span key={c.id} className="chip">{c.emoji} {c.name}</span>)}</div> : (
+        <>
+          {live.map((c) => (
+            <div className="settings-row" key={c.id} style={{ gap: 6 }}>
+              <input className="note-input" style={{ width: 52, marginBottom: 0, textAlign: "center" }} defaultValue={c.emoji} maxLength={4} aria-label="emoji" onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== c.emoji) write(supabase.from("categories").update({ emoji: v }).eq("id", c.id), "change the emoji"); }} />
+              <input className="note-input" style={{ flex: 1, marginBottom: 0 }} defaultValue={c.name} maxLength={20} aria-label="name" onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== c.name) write(supabase.from("categories").update({ name: v }).eq("id", c.id), "rename it"); }} />
+              <button className="link-btn" style={{ color: "var(--ink-soft)" }} onClick={() => write(supabase.from("categories").update({ archived: true }).eq("id", c.id), "archive it")}>archive</button>
+            </div>
+          ))}
+          <div className="settings-row" style={{ gap: 6 }}>
+            <input className="note-input" style={{ width: 52, marginBottom: 0, textAlign: "center" }} value={emoji} maxLength={4} aria-label="emoji for the new category" onChange={(e) => setEmoji(e.target.value)} />
+            <input className="note-input" style={{ flex: 1, marginBottom: 0 }} placeholder="new category…" value={name} maxLength={20} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && add()} />
+            <button className="link-btn" onClick={add} disabled={!name.trim()}>add</button>
+          </div>
+          {gone.length > 0 && <div className="tiny">archived (history kept): {gone.map((c) => <button key={c.id} className="link-btn" onClick={() => write(supabase.from("categories").update({ archived: false }).eq("id", c.id), "bring it back")}>{c.emoji} {c.name} ↺</button>)}</div>}
+        </>
+      )}
+    </div>
   );
 }

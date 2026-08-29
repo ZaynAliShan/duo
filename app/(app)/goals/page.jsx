@@ -1,25 +1,26 @@
 "use client";
 import { useEffect, useState } from "react";
 import { format } from "date-fns";
-import { useDuo, useLive } from "@/components/DuoProvider";
+import { useDuo, useLive, LoadError } from "@/components/DuoProvider";
 import Sheet from "@/components/Sheet";
 import { fetchGoals } from "@/lib/queries/goals";
-import { fmt } from "@/lib/format";
+import { fmt, parseAmount } from "@/lib/format";
 import { paceLine } from "@/lib/pace";
 import { GOAL_COLORS, GOAL_EMOJIS, BUCKET_EMOJIS } from "@/lib/palette";
 import { copy } from "@/lib/copy";
 
 export default function GoalsPage() {
   const { supabase, couple, me, who, nameOf, letterOf, confetti, toast } = useDuo();
-  const [d, refresh] = useLive(["goals", "goal_contributions", "bucket_items"], () => (couple ? fetchGoals(supabase, couple.id) : null));
+  const [d, refresh, error] = useLive(["goals", "goal_contributions", "bucket_items"], () => (couple ? fetchGoals(supabase, couple.id) : null));
   const [view, setView] = useState("hub"); // hub | jars | bucket | history
   const [histId, setHistId] = useState(null);
   const [contrib, setContrib] = useState(null);   // goal
+  const [editContrib, setEditContrib] = useState(null); // {contribution, goal}
   const [editGoal, setEditGoal] = useState(undefined); // undefined closed · null new · goal
   const [editDream, setEditDream] = useState(null);
   const [newDream, setNewDream] = useState("");
   useEffect(() => { window.scrollTo({ top: 0 }); }, [view]);
-  if (!d) return <h2 className="pane-title">Our goals 🎯</h2>;
+  if (!d) return <><h2 className="pane-title">Our goals 🎯</h2><LoadError error={error} onRetry={refresh} what="the goals" /></>;
   const { jars, bucket } = d;
   const tSaved = jars.reduce((s, g) => s + g.saved, 0), tTarget = jars.reduce((s, g) => s + g.target, 0);
   const jPct = tTarget ? Math.min(100, Math.round((tSaved / tTarget) * 100)) : 0;
@@ -29,23 +30,26 @@ export default function GoalsPage() {
 
   async function tick(it) {
     const now = !it.done_at;
-    await supabase.from("bucket_items").update({ done_at: now ? new Date().toISOString() : null, done_by: now ? me.id : null }).eq("id", it.id);
+    const { error } = await supabase.from("bucket_items").update({ done_at: now ? new Date().toISOString() : null, done_by: now ? me.id : null }).eq("id", it.id);
+    if (error) return toast("couldn't tick that — " + error.message);
     if (now) confetti();
   }
   async function addDream() {
     const t = newDream.trim(); if (!t) return;
-    await supabase.from("bucket_items").insert({ couple_id: couple.id, title: t, emoji: BUCKET_EMOJIS[bucket.length % 6], added_by: me.id, sort: bucket.length });
+    const { error } = await supabase.from("bucket_items").insert({ couple_id: couple.id, title: t, emoji: BUCKET_EMOJIS[bucket.length % BUCKET_EMOJIS.length], added_by: me.id, sort: bucket.length });
+    if (error) return toast("couldn't add that — " + error.message);
     setNewDream("");
   }
 
   return (
     <>
+      <LoadError error={error} onRetry={refresh} what="the latest" />
       {view === "hub" && (
         <div id="goalsHub">
           <h2 className="pane-title">Our goals 🎯</h2>
           <p className="pane-sub">Everything you two are dreaming toward — the money and the magic.</p>
           <div className="hub-hero">
-            <div className="hh-label">Saved toward our dreams</div>
+            <div className="hh-label">In the jars</div>
             <div className="hh-big">{fmt(tSaved)}</div>
             <div className="hh-sub">of {fmt(tTarget)} — {jPct}% of the way there</div>
             <div className="hh-track"><div className="hh-fill" style={{ width: jPct + "%" }} /></div>
@@ -144,17 +148,18 @@ export default function GoalsPage() {
         </div>
       )}
 
-      {view === "history" && <History g={jars.find((x) => x.id === histId)} back={() => setView("jars")} />}
+      {view === "history" && <History g={jars.find((x) => x.id === histId)} back={() => setView("jars")} onEdit={(h) => setEditContrib({ c: h, g: jars.find((x) => x.id === histId) })} />}
 
       <ContributeSheet g={contrib} onClose={() => setContrib(null)} />
+      <ContribEditSheet item={editContrib} onClose={() => setEditContrib(null)} />
       <GoalSheet g={editGoal} onClose={() => setEditGoal(undefined)} count={jars.length} />
       <DreamSheet it={editDream} onClose={() => setEditDream(null)} />
     </>
   );
 }
 
-function History({ g, back }) {
-  const { me, partner, nameOf, letterOf, who } = useDuo();
+function History({ g, back, onEdit }) {
+  const { me, partner, letterOf, who } = useDuo();
   if (!g) return null;
   const tot = { you: 0, him: 0 };
   g.hist.forEach((h) => { tot[who(h.user_id)] += Number(h.amount); });
@@ -169,17 +174,21 @@ function History({ g, back }) {
           <div className="gh-stat you"><span className="gh-coin you">{letterOf(me.id)}</span><div><div className="v vy">{fmt(tot.you)}</div><div className="k">by {me.display_name} · {Math.round((tot.you / all) * 100)}% of the jar</div></div></div>
           {partner && <div className="gh-stat him"><span className="gh-coin him">{letterOf(partner.id)}</span><div><div className="v vh">{fmt(tot.him)}</div><div className="k">by {partner.display_name} · {Math.round((tot.him / all) * 100)}% of the jar</div></div></div>}
         </div>
+        <p className="pane-sub" style={{ margin: "6px 0 0" }}>tap one of your own rows to fix or remove it ✏️</p>
         <div className="gh-scroll"><table className="gh-table">
           <thead><tr><th>Who</th><th>Contribution</th><th className="th-date">Date</th></tr></thead>
           <tbody>
             {!g.hist.length && <tr><td colSpan={3} style={{ textAlign: "center", padding: "20px 0", fontFamily: "var(--hand)", fontSize: 15.5, color: "var(--ink-soft)" }}>{copy.firstContribution}</td></tr>}
-            {g.hist.map((h) => (
-              <tr key={h.id}>
-                <td><span className={"gh-coin " + who(h.user_id)}>{letterOf(h.user_id)}</span></td>
-                <td><span className="td-amt">{fmt(h.amount)}</span>{h.note && <span className="gh-note"> · {h.note}</span>}</td>
-                <td className="td-date">{format(new Date(h.created_at), "MMM d, yyyy")}</td>
-              </tr>
-            ))}
+            {g.hist.map((h) => {
+              const mine = h.user_id === me.id;
+              return (
+                <tr key={h.id} onClick={() => mine && onEdit(h)} style={mine ? { cursor: "pointer" } : undefined} title={mine ? "edit or remove" : undefined}>
+                  <td><span className={"gh-coin " + who(h.user_id)}>{letterOf(h.user_id)}</span></td>
+                  <td><span className="td-amt">{fmt(h.amount)}</span>{h.note && <span className="gh-note"> · {h.note}</span>}{mine && <span className="gh-note"> ✏️</span>}</td>
+                  <td className="td-date">{format(new Date(h.created_at), "MMM d, yyyy")}</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table></div>
       </div>
@@ -187,26 +196,63 @@ function History({ g, back }) {
   );
 }
 
+/** Did this write finish the jar? Ask the DB (the trigger decides) instead of trusting a stale client sum. */
+async function justCompleted(supabase, goalId, wasDone) {
+  if (wasDone) return false;
+  const { data } = await supabase.from("goals").select("completed_at").eq("id", goalId).maybeSingle();
+  return !!data?.completed_at;
+}
+
 function ContributeSheet({ g, onClose }) {
   const { supabase, couple, me, confetti, toast } = useDuo();
   const [amt, setAmt] = useState(""); const [note, setNote] = useState(""); const [busy, setBusy] = useState(false);
   useEffect(() => { setAmt(""); setNote(""); }, [g?.id]);
-  const n = parseInt(amt || "0", 10);
+  const n = parseAmount(amt);
   async function save() {
-    if (!(n > 0) || busy) return; setBusy(true);
+    if (n == null || busy) return; setBusy(true);
     const { error } = await supabase.from("goal_contributions").insert({ goal_id: g.id, couple_id: couple.id, user_id: me.id, amount: n, note: note.trim() });
     if (error) { toast("couldn't add — " + error.message); setBusy(false); return; }
-    // completed_at is maintained by a DB trigger (race-proof when both partners add at once) — we just celebrate
-    if (g.saved < g.target && g.saved + n >= g.target) confetti();
+    if (await justCompleted(supabase, g.id, !!g.completed_at)) confetti();
     setBusy(false); onClose();
   }
   return (
     <Sheet open={!!g} onClose={onClose}>
       <h3 className="c-title">Add to {g?.name} {g?.emoji}</h3>
       <div className="chip-row">{[1000, 2500, 5000, 10000].map((a) => <button key={a} className={"chip" + (n === a ? " sel" : "")} onClick={() => setAmt(String(a))}>Rs {a.toLocaleString("en-PK")}</button>)}</div>
-      <input className="note-input amt-input" type="number" inputMode="numeric" min="1" placeholder="or type any amount (Rs)" value={amt} onChange={(e) => setAmt(e.target.value)} />
+      <input className="note-input amt-input" type="text" inputMode="numeric" pattern="[0-9]*" placeholder="or type any amount (Rs)" value={amt} onChange={(e) => setAmt(e.target.value.replace(/[^\d]/g, "").slice(0, 9))} />
       <input className="note-input" placeholder="a little note… (optional)" maxLength={40} value={note} onChange={(e) => setNote(e.target.value)} />
-      <button className="save-btn" disabled={!(n > 0) || busy} onClick={save}>Add to the jar 💛</button>
+      <button className="save-btn" disabled={n == null || busy} onClick={save}>Add to the jar 💛</button>
+    </Sheet>
+  );
+}
+
+/** Fix or remove one of your own contributions (RLS: own rows only). */
+function ContribEditSheet({ item, onClose }) {
+  const { supabase, toast } = useDuo();
+  const c = item?.c, g = item?.g;
+  const [amt, setAmt] = useState(""); const [note, setNote] = useState(""); const [armed, setArmed] = useState(false); const [busy, setBusy] = useState(false);
+  useEffect(() => { if (c) { setAmt(String(Math.round(c.amount))); setNote(c.note || ""); setArmed(false); } }, [c?.id]);
+  const n = parseAmount(amt);
+  async function save() {
+    if (n == null || busy) return; setBusy(true);
+    const { error } = await supabase.from("goal_contributions").update({ amount: n, note: note.trim() }).eq("id", c.id);
+    setBusy(false);
+    if (error) toast("couldn't change that — " + error.message); else onClose();
+  }
+  async function del() {
+    if (!armed) { setArmed(true); return; }
+    if (busy) return; setBusy(true);
+    const { error } = await supabase.from("goal_contributions").delete().eq("id", c.id);
+    setBusy(false);
+    if (error) toast("couldn't remove that — " + error.message); else onClose();
+  }
+  return (
+    <Sheet open={!!c} onClose={onClose}>
+      <h3 className="c-title">Fix this contribution ✏️<small>{g ? ` · ${g.name} ${g.emoji}` : ""}</small></h3>
+      <input className="note-input amt-input" type="text" inputMode="numeric" pattern="[0-9]*" placeholder="amount (Rs)" value={amt} onChange={(e) => setAmt(e.target.value.replace(/[^\d]/g, "").slice(0, 9))} />
+      <input className="note-input" placeholder="a little note… (optional)" maxLength={40} value={note} onChange={(e) => setNote(e.target.value)} />
+      <button className="save-btn" disabled={n == null || busy} onClick={save}>Save 💛</button>
+      <button className="g-del" onClick={del}>{armed ? "really take it out of the jar? tap again 🥺" : "🗑 remove this contribution"}</button>
     </Sheet>
   );
 }
@@ -221,33 +267,35 @@ function GoalSheet({ g, onClose, count }) {
     if (g) { setName(g.name); setEmoji(g.emoji); setColor(g.color); setTarget(String(Math.round(g.target))); setDate(g.target_date || ""); }
     else { setName(""); setEmoji(GOAL_EMOJIS[0]); setColor(GOAL_COLORS[0]); setTarget(""); setDate(""); }
   }, [g, open]);
-  const t = parseInt(target || "0", 10);
-  const valid = name.trim() && t > 0;
+  const t = parseAmount(target);
+  const valid = name.trim() && t != null;
   async function save() {
     if (!valid || busy) return; setBusy(true);
     const row = { name: name.trim(), emoji, color, target_amount: t, target_date: date || null };
     let error;
     if (g) {
       ({ error } = await supabase.from("goals").update(row).eq("id", g.id)); // completed_at: DB trigger
-      if (!error && g.saved < g.target && g.saved >= t) confetti(); // lowering the target can finish a jar
+      if (!error && await justCompleted(supabase, g.id, !!g.completed_at)) confetti(); // lowering the target can finish a jar
     } else ({ error } = await supabase.from("goals").insert({ ...row, couple_id: couple.id, sort: count }));
     setBusy(false);
     if (error) toast("couldn't save — " + error.message); else onClose();
   }
   async function del() {
     if (!armed) { setArmed(true); return; }
-    await supabase.from("goals").delete().eq("id", g.id); onClose();
+    const { error } = await supabase.from("goals").delete().eq("id", g.id);
+    if (error) toast("couldn't remove — " + error.message); else onClose();
   }
+  const nContribs = g?.hist?.length || 0;
   return (
     <Sheet open={open} onClose={onClose}>
       <h3 className="c-title">{g ? `Edit ${g.name} ${g.emoji}` : "Start a new jar 🫙"}</h3>
       <input className="note-input" placeholder="what are you two saving for?" maxLength={30} value={name} onChange={(e) => setName(e.target.value)} />
       <div className="chip-row">{GOAL_EMOJIS.map((e) => <button key={e} className={"chip" + (emoji === e ? " sel" : "")} style={{ fontSize: 17 }} onClick={() => setEmoji(e)}>{e}</button>)}</div>
-      <input className="note-input amt-input" type="number" inputMode="numeric" min="1" placeholder="target amount (Rs)" value={target} onChange={(e) => setTarget(e.target.value)} />
+      <input className="note-input amt-input" type="text" inputMode="numeric" pattern="[0-9]*" placeholder="target amount (Rs)" value={target} onChange={(e) => setTarget(e.target.value.replace(/[^\d]/g, "").slice(0, 9))} />
       <div className="row2"><span className="sheet-label" style={{ alignSelf: "center", margin: 0, flex: "0 0 auto" }}>by when? (optional)</span><input className="note-input" type="date" value={date} onChange={(e) => setDate(e.target.value)} /></div>
       <div className="color-row">{GOAL_COLORS.map((c) => <button key={c} className={"color-dot" + (color === c ? " sel" : "")} style={{ background: c }} aria-label="Jar color" onClick={() => setColor(c)} />)}</div>
       <button className="save-btn" disabled={!valid || busy} onClick={save}>Save the jar 💛</button>
-      {g && <button className="g-del" onClick={del}>{armed ? "really remove it? tap again 🥺" : "🗑 remove this jar"}</button>}
+      {g && <button className="g-del" onClick={del}>{armed ? (nContribs ? `this also removes its ${nContribs} contribution${nContribs === 1 ? "" : "s"} (${fmt(g.saved)}) from your totals — tap again 🥺` : "really remove it? tap again 🥺") : "🗑 remove this jar"}</button>}
     </Sheet>
   );
 }
@@ -261,7 +309,7 @@ function DreamSheet({ it, onClose }) {
     const { error } = await supabase.from("bucket_items").update({ title: t.trim(), emoji: e }).eq("id", it.id);
     if (error) toast(error.message); else onClose();
   }
-  async function del() { if (!armed) { setArmed(true); return; } await supabase.from("bucket_items").delete().eq("id", it.id); onClose(); }
+  async function del() { if (!armed) { setArmed(true); return; } const { error } = await supabase.from("bucket_items").delete().eq("id", it.id); if (error) toast(error.message); else onClose(); }
   return (
     <Sheet open={!!it} onClose={onClose}>
       <h3 className="c-title">Edit this dream {it?.emoji}</h3>

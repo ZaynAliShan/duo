@@ -77,6 +77,41 @@ await A.from("goal_contributions").insert({ goal_id: gRow.id, couple_id: cid, us
 const { data: gDone } = await A.from("goals").select("completed_at").eq("id", gRow.id).single();
 check(!!gDone.completed_at, "goal completion is set by the DB trigger");
 
+console.log("audit-fix guarantees (errors-v1)");
+check(/^[A-Z2-9]{10}$/.test(code), "invite codes are 10 characters: " + code);
+const anon = createClient(URL, ANON, { auth: { persistSession: false } });
+const { error: anonCc } = await anon.rpc("create_couple"); check(!!anonCc, "anon cannot call create_couple: " + (anonCc?.message || "ALLOWED!"));
+const { error: anonCi } = await anon.rpc("current_couple_id"); check(!!anonCi, "anon cannot call current_couple_id: " + (anonCi?.message || "ALLOWED!"));
+// C starts their own Duo, then tries to reach across into A+B's rows through child→parent references
+const { data: cDuo, error: cDuoErr } = await C.rpc("create_couple"); check(!cDuoErr, "C can start their own Duo");
+const cId = (await C.auth.getUser()).data.user.id;
+const { data: pvAnon } = await anon.rpc("invite_preview", { p_code: cDuo.code }); check(pvAnon?.ok === true && !("inviter" in pvAnon), "anon preview of a valid code carries no inviter name");
+const { data: pvAuth } = await A.rpc("invite_preview", { p_code: cDuo.code }); check(pvAuth?.ok === true && typeof pvAuth.inviter === "string", "signed-in preview of a valid code does show the inviter");
+const { error: xgc } = await C.from("goal_contributions").insert({ goal_id: gRow.id, couple_id: cDuo.couple_id, user_id: cId, amount: 5 });
+check(!!xgc, "C cannot contribute to A+B's goal from their own couple");
+const { data: aEntry } = await A.from("entries").select("id").limit(1).single();
+const { error: xh } = await C.from("hearts").insert({ entry_id: aEntry.id, couple_id: cDuo.couple_id, user_id: cId });
+check(!!xh, "C cannot heart A+B's entry from their own couple");
+const { data: aNote } = await A.from("notes").select("id").limit(1).single();
+const { error: xli } = await C.from("list_items").insert({ note_id: aNote.id, couple_id: cDuo.couple_id, text: "x", added_by: cId });
+check(!!xli, "C cannot add a list item to A+B's note");
+const { data: cNote } = await C.from("notes").insert({ couple_id: cDuo.couple_id, user_id: cId, body: "mine" }).select().single();
+const { data: xpin } = await C.from("notes").update({ goal_id: gRow.id }).eq("id", cNote.id).select();
+check(!xpin?.length, "C cannot pin their note to A+B's goal");
+const { error: xfact } = await C.from("facts").insert({ couple_id: cDuo.couple_id, about_profile_id: aId, label: "x" });
+check(!!xfact, "C cannot write a fact 'about' A");
+const { error: xcat } = await C.from("entries").insert({ couple_id: cDuo.couple_id, user_id: cId, kind: "expense", amount: 1, category_id: cats[0].id });
+check(!!xcat, "C cannot file an expense under A+B's category");
+const { error: negCap } = await A.from("categories").update({ monthly_cap: -5 }).eq("id", cats[0].id); check(!!negCap, "a negative soft cap is rejected");
+// check-in photos now carry a version suffix: <day>.<v>.jpg — the blur rule must still read the day
+const { error: vUp } = await A.storage.from("checkins").upload(`${cid}/${aId}/2026-08-27.k1x.jpg`, png, { contentType: "image/jpeg" }); check(!vUp, "A uploads a versioned check-in photo" + (vUp ? " — " + vUp.message : ""));
+const { error: vB } = await B.storage.from("checkins").download(`${cid}/${aId}/2026-08-27.k1x.jpg`); check(!!vB, "B can't download A's versioned photo for a day B hasn't posted");
+const { error: vA } = await A.storage.from("checkins").download(`${cid}/${aId}/2026-08-27.k1x.jpg`); check(!vA, "A can download their own versioned photo");
+const { data: streaks, error: stErr } = await A.rpc("checkin_streaks"); check(!stErr && Array.isArray(streaks) && streaks.length === 2, "checkin_streaks() returns both members" + (stErr ? " — " + stErr.message : ""));
+const { data: cFactsOnce } = await C.from("facts").select("id"); const nFacts = cFactsOnce.length;
+await admin.rpc("seed_person_facts", { p_couple: cDuo.couple_id, p_profile: cId }); // service role may re-seed; the function must no-op
+const { data: cFactsTwice } = await C.from("facts").select("id"); check(cFactsTwice.length === nFacts, "seed_person_facts is idempotent");
+
 console.log(fails ? `\n${fails} FAILED` : "\nall good — a third account sees nothing 💛");
 // cleanup
 for (const c of [A, B, C]) { const id = (await c.auth.getUser()).data.user.id; await admin.auth.admin.deleteUser(id); }

@@ -3,13 +3,12 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useDuo } from "@/components/DuoProvider";
 import { SWATCHES } from "@/lib/palette";
-import { uploadPhoto } from "@/lib/photos";
+import { uploadPhoto, freshPath } from "@/lib/photos";
 import { initials } from "@/lib/format";
 import Photo from "@/components/Photo";
+import { readCookie, clearInviteCookie } from "@/lib/invite-cookie";
 
-function readCookie(name) {
-  return document.cookie.split("; ").find((c) => c.startsWith(name + "="))?.split("=")[1];
-}
+const CODE_LEN = 10;
 
 export default function Onboarding() {
   const { supabase, me, reload, loading, toast } = useDuo();
@@ -26,8 +25,11 @@ export default function Onboarding() {
   useEffect(() => {
     if (!me) return;
     setName(me.display_name || ""); setColor(me.avatar_color || SWATCHES[0].main); setPhotoPath(me.avatar_url || null);
-    if (me.display_name) setStep(me.couple_id ? "done" : "choose");
     const inv = readCookie("duo_invite");
+    if (me.display_name) {
+      // a named user arriving with an invite in hand goes straight to the join step (auto-redeems below)
+      setStep(me.couple_id ? "done" : inv ? "join" : "choose");
+    }
     if (inv && !me.couple_id) setCode(decodeURIComponent(inv));
   }, [me?.id]);
 
@@ -41,16 +43,18 @@ export default function Onboarding() {
     setBusy(false);
     if (error) { setErr("couldn't save that — try again 💛"); return; }
     await reload();
-    // an invite waiting in the cookie? join straight away
+    // decide from the freshest row, not the `me` this closure captured before the reload
+    const { data: fresh } = await supabase.from("profiles").select("couple_id").eq("id", me.id).maybeSingle();
+    const linked = !!fresh?.couple_id;
     const inv = readCookie("duo_invite");
-    if (inv && !me.couple_id) { setCode(decodeURIComponent(inv)); setStep("join"); }
-    else setStep(me.couple_id ? "done" : "choose");
+    if (inv && !linked) { setCode(decodeURIComponent(inv)); setStep("join"); }
+    else setStep(linked ? "done" : "choose");
   }
   async function pickPhoto(e) {
     const f = e.target.files?.[0]; if (!f) return;
     setBusy(true);
-    try { setPhotoPath(await uploadPhoto(supabase, "avatars", `${me.id}/avatar.jpg`, f)); }
-    catch { setErr("that photo didn't upload — try another? 💛"); }
+    try { setPhotoPath(await uploadPhoto(supabase, "avatars", freshPath(me.id, "avatar"), f)); }
+    catch (err) { setErr(err?.message?.includes("format") ? err.message : "that photo didn't upload — try another? 💛"); }
     setBusy(false);
   }
   async function startDuo() {
@@ -67,8 +71,8 @@ export default function Onboarding() {
     setBusy(true); setErr("");
     const { error } = await supabase.rpc("redeem_invite", { p_code: code.trim().toUpperCase() });
     setBusy(false);
-    if (error) { setErr(error.message.replace(/^.*?: /, "")); return; }
-    document.cookie = "duo_invite=; path=/; max-age=0";
+    if (error) { setErr(error.message.replace(/^.*?: /, "")); clearInviteCookie(); return; }
+    clearInviteCookie();
     toast("You're linked! 🎉");
     await reload();
     router.replace("/today");
@@ -112,8 +116,8 @@ export default function Onboarding() {
           <form onSubmit={join}>
             <div className="we">💌</div>
             <h1>Join your person</h1>
-            <p>Paste the 6-letter code from their link.</p>
-            <input className="note-input code-input" placeholder="ABC123" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} autoFocus />
+            <p>Paste the code from their link.</p>
+            <input className="note-input code-input" placeholder="ABC123DEF4" maxLength={CODE_LEN} value={code} onChange={(e) => setCode(e.target.value.toUpperCase().replace(/[^A-Z2-9]/g, ""))} autoFocus />
             {err && <div className="kind-msg">{err}</div>}
             <button className="save-btn" disabled={busy || code.trim().length < 6}>{busy ? "linking…" : "Link us 💛"}</button>
             <button type="button" className="ghost-btn" onClick={() => { setStep("choose"); setErr(""); }}>back</button>

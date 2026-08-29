@@ -2,11 +2,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { format, subDays } from "date-fns";
-import { useDuo, useLive } from "@/components/DuoProvider";
+import { useDuo, useLive, LoadError } from "@/components/DuoProvider";
 import Sheet from "@/components/Sheet";
 import { buildModel, cycleInfo, nextOvulation, PHASES, CYC_FACTS, SYMPTOMS, diffDays, addDays } from "@/lib/cycle";
 import { fromKey, keyOf, todayKey, hashDay } from "@/lib/format";
 import { fetchCycle, useCycleOwner } from "@/lib/queries/cycle";
+import { copy } from "@/lib/copy";
 
 const CFMT = (d) => format(d, "MMM d");
 
@@ -15,9 +16,11 @@ export default function CyclePage() {
   const router = useRouter();
   const today = todayKey(tz);
   const T = fromKey(today);
-  const [d] = useLive(["cycles", "cycle_logs", "profiles"], () => (couple ? fetchCycle(supabase, couple.id) : null));
+  const [d, refresh, error] = useLive(["cycles", "cycle_logs", "profiles"], () => (couple ? fetchCycle(supabase, couple.id) : null));
   const own = useCycleOwner(d);
   const [logOpen, setLogOpen] = useState(false);
+  const [firstArmed, setFirstArmed] = useState(false);
+  const [histOpen, setHistOpen] = useState(false);
   const ringRef = useRef(), markerRef = useRef();
   const m = useMemo(() => (own ? buildModel(own.rows) : null), [own]);
   const info = m ? cycleInfo(T, m) : null;
@@ -37,28 +40,37 @@ export default function CyclePage() {
     raf = requestAnimationFrame(sweep); return () => cancelAnimationFrame(raf);
   }, [info?.day, m?.avgLen]);
 
-  if (!d || !own) return <h2 className="pane-title">Her cycle 🌸</h2>;
+  if (!d || !own) return <><h2 className="pane-title">Cycle 🌸</h2><LoadError error={error} onRetry={refresh} what="the cycle" /></>;
   const owner = own.owner, first = (owner?.display_name || "her").split(" ")[0];
   const her = own.isMe ? "your" : `${first}'s`;
   const daysToNext = m?.nextStart ? diffDays(T, m.nextStart) : null;
   const todayLog = own.logs.find((l) => l.day === today);
   const nOvu = m ? nextOvulation(T, m) : null;
+  const title = own.nobody ? "Cycle 🌸" : own.isMe ? "My cycle 🌸" : "Her cycle 🌸";
 
   async function toggleShare() {
     const { error } = await supabase.from("profiles").update({ cycle_shared: !me.cycle_shared }).eq("id", me.id);
     if (error) toast(error.message); else reload();
   }
+  // the very first log on this account is a commitment: this page becomes YOUR cycle — say so, ask twice
+  function firstLog() {
+    if (partner && !firstArmed) { setFirstArmed(true); return; }
+    setFirstArmed(false); setLogOpen(true);
+  }
 
   return (
     <>
-      <h2 className="pane-title">{own.isMe ? "My cycle 🌸" : "Her cycle 🌸"}</h2>
-      <p className="pane-sub">{own.isMe ? "Your rhythm, gently tracked — logs, phases, and what's coming." : `${first}'s rhythm, gently tracked — logs, phases, and what's coming.`}</p>
+      <h2 className="pane-title">{title}</h2>
+      <p className="pane-sub">{own.nobody ? "A gentle tracker for whoever this rhythm belongs to — logs, phases, and what's coming." : own.isMe ? "Your rhythm, gently tracked — logs, phases, and what's coming." : `${first}'s rhythm, gently tracked — logs, phases, and what's coming.`}</p>
+      <LoadError error={error} onRetry={refresh} what="the latest" />
 
       {!own.rows.length ? (
         <div className="cyc-card cyc-hero">
           <div style={{ fontSize: 46 }}>🌸</div>
-          <p className="pane-sub" style={{ marginTop: 8 }}>{partner ? "Nothing logged yet. Whoever this rhythm belongs to logs the first period here — predictions start from the second cycle." : "Nothing logged yet — log the first period and Duo starts learning the rhythm."}</p>
-          <button className="cyc-log-btn" onClick={() => setLogOpen(true)}>Log today 🌸</button>
+          <p className="pane-sub" style={{ marginTop: 8 }}>{partner ? `Nothing logged yet. Whoever this rhythm belongs to logs the first period on THEIR phone — predictions start from the second cycle.` : "Nothing logged yet — log the first period and Duo starts learning the rhythm."}</p>
+          {firstArmed && <p className="kind-msg">{copy.cycleFirstLog(me.display_name)}</p>}
+          <button className="cyc-log-btn" onClick={firstLog}>{firstArmed ? "Yes — it's my cycle, log it 🌸" : "Log my period 🌸"}</button>
+          {firstArmed && <button className="ghost-btn" onClick={() => setFirstArmed(false)}>never mind</button>}
           {partner && <p className="cyc-foot">sharing is off by default — the switch appears once you've logged something.</p>}
         </div>
       ) : (
@@ -89,6 +101,7 @@ export default function CyclePage() {
                   {me.cycle_shared ? `sharing with ${partner.display_name} ` : `just for me `}<span className="sw" />
                 </button>
               )}
+              {own.isMe && me.cycle_shared && <p className="cyc-foot" style={{ marginTop: 6 }}>sharing shows {partner?.display_name || "them"} your phases, dates, flow, symptoms and notes.</p>}
             </div>
             {meta && !own.isMe && (
               <div>
@@ -108,6 +121,7 @@ export default function CyclePage() {
                 <div className="ph-tips">{meta.tips.map((t) => <div className="ph-tip" key={t}>{t}</div>)}</div>
               </div>
             )}
+            {!info && <div className="scrap-empty">the last logged cycle is a while back — predictions paused until the next period is logged 🌱</div>}
             <div className="pred-row">
               <Chip k="🌹 next period" v={daysToNext >= 0 ? <>{CFMT(m.nextStart)} <small>· in {daysToNext} days</small></> : <>any day now <small>· pencilled {CFMT(m.nextStart)}</small></>} />
               {nOvu && <Chip k="✨ fertile window" v={`${CFMT(addDays(nOvu, -5))} – ${CFMT(addDays(nOvu, 1))}`} />}
@@ -124,6 +138,7 @@ export default function CyclePage() {
                 {m.starts.slice(1).map((s, i) => { const len = diffDays(m.starts[i], s); return <Bar key={i} lbl={CFMT(m.starts[i])} w={Math.min(100, Math.round((len / 34) * 100))} val={`${len} days`} />; })}
                 {info && !info.predicted && <Bar lbl={CFMT(m.starts[m.starts.length - 1])} w={Math.min(100, Math.round((info.day / 34) * 100))} val={`day ${info.day} 🌱`} live />}
               </div>
+              {own.isMe && <button className="link-btn" style={{ marginTop: 8 }} onClick={() => setHistOpen(true)}>✏️ fix or remove a logged period</button>}
             </div>
             <div className="cyc-fact"><div className="cf-label">💡 did you know</div><div className="cf-txt">{CYC_FACTS[hashDay(today) % CYC_FACTS.length]}</div></div>
           </div>
@@ -131,6 +146,7 @@ export default function CyclePage() {
       )}
       <p className="cyc-foot">🌱 estimates based on logged cycles — not medical advice, and not contraception.</p>
       <CycleLogSheet open={logOpen} onClose={() => setLogOpen(false)} today={today} rows={own.rows} todayLog={todayLog} avgPeriod={m?.avgPeriod || 5} />
+      <CycleHistorySheet open={histOpen} onClose={() => setHistOpen(false)} rows={own.rows} logs={own.logs} today={today} />
     </>
   );
 }
@@ -143,25 +159,34 @@ function Bar({ lbl, w, val, live }) {
 
 export function CycleLogSheet({ open, onClose, today, rows, todayLog, avgPeriod }) {
   const { supabase, couple, me, toast } = useDuo();
-  const [started, setStarted] = useState(false); const [ended, setEnded] = useState(false); const [off, setOff] = useState(0);
+  const [started, setStarted] = useState(false); const [ended, setEnded] = useState(false); const [startDay, setStartDay] = useState(today);
   const [flow, setFlow] = useState(null); const [syms, setSyms] = useState([]); const [note, setNote] = useState(""); const [busy, setBusy] = useState(false);
   const T = fromKey(today);
   const openCycle = rows.filter((r) => !r.period_end).sort((a, b) => b.period_start.localeCompare(a.period_start))[0];
-  useEffect(() => { if (open) { setStarted(false); setEnded(false); setOff(0); setFlow(todayLog?.flow || null); setSyms(todayLog?.symptoms || []); setNote(todayLog?.note || ""); } }, [open]);
-  const valid = started || ended || flow || syms.length || note.trim();
+  useEffect(() => { if (open) { setStarted(false); setEnded(false); setStartDay(today); setFlow(todayLog?.flow || null); setSyms(todayLog?.symptoms || []); setNote(todayLog?.note || ""); } }, [open]);
+  const minStart = keyOf(subDays(T, 120)); // seed up to four months of history, not just four days
+  const startOk = /^\d{4}-\d{2}-\d{2}$/.test(startDay) && startDay <= today && startDay >= minStart;
+  const valid = (started && startOk) || ended || flow || syms.length || note.trim();
   async function save() {
     if (!valid || busy) return; setBusy(true);
     try {
       if (started) {
-        const start = keyOf(subDays(T, off));
-        if (openCycle) await supabase.from("cycles").update({ period_end: keyOf(addDays(fromKey(openCycle.period_start), avgPeriod - 1)) }).eq("id", openCycle.id);
-        const { error } = await supabase.from("cycles").upsert({ couple_id: couple.id, user_id: me.id, period_start: start }, { onConflict: "user_id,period_start" });
+        // an earlier open cycle is closed at its typical length, unless the new start is inside it (then it ends the day before)
+        if (openCycle && openCycle.period_start < startDay) {
+          const guess = keyOf(addDays(fromKey(openCycle.period_start), avgPeriod - 1));
+          const dayBefore = keyOf(subDays(fromKey(startDay), 1));
+          await supabase.from("cycles").update({ period_end: guess < dayBefore ? guess : dayBefore }).eq("id", openCycle.id);
+        }
+        const { error } = await supabase.from("cycles").upsert({ couple_id: couple.id, user_id: me.id, period_start: startDay }, { onConflict: "user_id,period_start" });
         if (error) throw error;
       } else if (ended && openCycle) {
-        await supabase.from("cycles").update({ period_end: today }).eq("id", openCycle.id);
+        const { error } = await supabase.from("cycles").update({ period_end: today }).eq("id", openCycle.id);
+        if (error) throw error;
       }
-      const { error } = await supabase.from("cycle_logs").upsert({ couple_id: couple.id, user_id: me.id, day: today, flow, symptoms: syms, note: note.trim() }, { onConflict: "user_id,day" });
-      if (error) throw error;
+      if (flow || syms.length || note.trim() || todayLog) {
+        const { error } = await supabase.from("cycle_logs").upsert({ couple_id: couple.id, user_id: me.id, day: today, flow, symptoms: syms, note: note.trim() }, { onConflict: "user_id,day" });
+        if (error) throw error;
+      }
       onClose();
     } catch (e) { toast("couldn't log — " + e.message); }
     setBusy(false);
@@ -169,14 +194,15 @@ export function CycleLogSheet({ open, onClose, today, rows, todayLog, avgPeriod 
   return (
     <Sheet open={open} onClose={onClose}>
       <h3 className="c-title">{me?.display_name}, today 🌸</h3>
-      {openCycle && diffDays(fromKey(openCycle.period_start), T) < 12 ? (
-        <button className={"cyc-period-btn" + (ended ? " sel" : "")} onClick={() => setEnded(!ended)}>{ended ? "🌷 period ended today ✓" : "🌷 my period ended"}</button>
-      ) : (
-        <button className={"cyc-period-btn" + (started ? " sel" : "")} onClick={() => setStarted(!started)}>{started ? "🌹 period started ✓" : "🌹 my period started"}</button>
-      )}
+      <div className="chip-row">
+        {openCycle && <button className={"cyc-period-btn" + (ended ? " sel" : "")} onClick={() => { setEnded(!ended); setStarted(false); }}>{ended ? "🌷 period ended today ✓" : "🌷 my period ended"}</button>}
+        <button className={"cyc-period-btn" + (started ? " sel" : "")} onClick={() => { setStarted(!started); setEnded(false); }}>{started ? "🌹 period started ✓" : openCycle ? "🌹 a new period started" : "🌹 my period started"}</button>
+      </div>
       {started && <>
         <div className="sheet-label">when did it start?</div>
-        <div className="chip-row">{[0, 1, 2, 3, 4].map((o) => <button key={o} className={"chip" + (off === o ? " sel-rose" : "")} onClick={() => setOff(o)}>{o === 0 ? "today" : o === 1 ? "yesterday" : CFMT(subDays(T, o))}</button>)}</div>
+        <div className="chip-row">{[0, 1, 2, 3].map((o) => { const k = keyOf(subDays(T, o)); return <button key={o} className={"chip" + (startDay === k ? " sel-rose" : "")} onClick={() => setStartDay(k)}>{o === 0 ? "today" : o === 1 ? "yesterday" : CFMT(subDays(T, o))}</button>; })}</div>
+        <div className="row2"><span className="sheet-label" style={{ alignSelf: "center", margin: 0, flex: "0 0 auto" }}>or an earlier day</span><input className="note-input" type="date" min={minStart} max={today} value={startDay} onChange={(e) => setStartDay(e.target.value)} /></div>
+        {!startOk && <div className="kind-msg">pick a day in the last four months 💛</div>}
       </>}
       <div className="sheet-label">flow (if any)</div>
       <div className="chip-row">{["light", "medium", "heavy"].map((f) => <button key={f} className={"chip" + (flow === f ? " sel-rose" : "")} onClick={() => setFlow(flow === f ? null : f)}>🌹 {f}</button>)}</div>
@@ -184,6 +210,43 @@ export function CycleLogSheet({ open, onClose, today, rows, todayLog, avgPeriod 
       <div className="chip-row">{SYMPTOMS.map((s) => <button key={s} className={"chip" + (syms.includes(s) ? " sel-rose" : "")} onClick={() => setSyms(syms.includes(s) ? syms.filter((x) => x !== s) : [...syms, s])}>{s}</button>)}</div>
       <input className="note-input" placeholder="a little note… (optional)" maxLength={60} value={note} onChange={(e) => setNote(e.target.value)} />
       <button className="save-btn rose" disabled={!valid || busy} onClick={save}>Log it 🌸</button>
+    </Sheet>
+  );
+}
+
+/** Fix a wrong start/end or remove a period (and today's log) — owner only; RLS agrees. */
+function CycleHistorySheet({ open, onClose, rows, logs, today }) {
+  const { supabase, toast } = useDuo();
+  const [armed, setArmed] = useState(null);
+  useEffect(() => { if (open) setArmed(null); }, [open]);
+  const sorted = [...rows].sort((a, b) => b.period_start.localeCompare(a.period_start));
+  async function patch(id, p) { const { error } = await supabase.from("cycles").update(p).eq("id", id); if (error) toast("couldn't change that — " + error.message); }
+  async function del(id) {
+    if (armed !== id) { setArmed(id); return; }
+    const { error } = await supabase.from("cycles").delete().eq("id", id);
+    if (error) toast("couldn't remove that — " + error.message); setArmed(null);
+  }
+  async function delLog(id) {
+    if (armed !== id) { setArmed(id); return; }
+    const { error } = await supabase.from("cycle_logs").delete().eq("id", id);
+    if (error) toast("couldn't remove that — " + error.message); setArmed(null);
+  }
+  const todayLog = logs.find((l) => l.day === today);
+  return (
+    <Sheet open={open} onClose={onClose}>
+      <h3 className="c-title">Logged periods ✏️<small> · fix a date or take one out</small></h3>
+      {!sorted.length && <div className="scrap-empty">nothing logged yet</div>}
+      {sorted.map((r) => (
+        <div className="settings-row" key={r.id} style={{ flexWrap: "wrap", gap: 6 }}>
+          <span className="k">🌹 start</span>
+          <input type="date" max={today} defaultValue={r.period_start} onChange={(e) => e.target.value && patch(r.id, { period_start: e.target.value })} />
+          <span className="k">🌷 end</span>
+          <input type="date" min={r.period_start} max={today} defaultValue={r.period_end || ""} onChange={(e) => patch(r.id, { period_end: e.target.value || null })} />
+          <button className="link-btn" style={{ color: "var(--ink-soft)" }} onClick={() => del(r.id)}>{armed === r.id ? "really remove? tap again 🥺" : "remove"}</button>
+        </div>
+      ))}
+      {todayLog && <div className="settings-row"><span className="k">📒 today's log</span><button className="link-btn" onClick={() => delLog(todayLog.id)}>{armed === todayLog.id ? "really remove? tap again 🥺" : "remove today's log"}</button></div>}
+      <button className="ghost-btn" onClick={onClose}>done ✓</button>
     </Sheet>
   );
 }

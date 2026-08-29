@@ -35,7 +35,7 @@ await A.fill(".paper input.note-input", "Ayla"); await A.click(".swatch >> nth=4
 ok((await A.textContent("body")).includes("Start a Duo"), "profile saved → start/join choice");
 await A.click("text=Start a Duo"); await A.waitForURL("**/waiting", { timeout: 15000 }); await A.waitForTimeout(1500);
 const code = (await A.textContent(".big-code")).trim();
-ok(/^[A-Z2-9]{6}$/.test(code), "waiting screen shows a 6-letter code: " + code);
+ok(/^[A-Z2-9]{10}$/.test(code), "waiting screen shows a 10-character code: " + code);
 ok(await A.locator("img.qr").count() === 1, "QR code rendered");
 await A.screenshot({ path: `${OUT}/onb_2_waiting.png` });
 await A.click("text=start logging meanwhile"); await A.waitForURL("**/today"); await A.waitForTimeout(800);

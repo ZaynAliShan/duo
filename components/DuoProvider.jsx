@@ -11,6 +11,12 @@ export const useDuo = () => useContext(Ctx);
 const LIVE_TABLES = ["profiles", "couples", "entries", "hearts", "pings", "checkins", "answers", "goals", "goal_contributions",
   "bucket_items", "notes", "list_items", "facts", "calendar_marks", "cycles", "cycle_logs", "categories"];
 
+/** Unwrap a supabase response or throw — pages must not render "Rs 0" on a failed fetch. */
+export function must(res) {
+  if (res?.error) throw res.error;
+  return res?.data ?? [];
+}
+
 export function DuoProvider({ userId, children }) {
   const supabase = createClient();
   const router = useRouter();
@@ -20,6 +26,7 @@ export function DuoProvider({ userId, children }) {
   const [couple, setCouple] = useState(null);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
   const [theme, setTheme] = useState("light");
   const [toasts, setToasts] = useState([]);
   const listeners = useRef(new Set());
@@ -27,11 +34,14 @@ export function DuoProvider({ userId, children }) {
   const confettiRef = useRef(null);
   const partnerName = useRef("your person");
   const loadSeq = useRef(0);
+  const themeFromProfile = useRef(false);
 
   const load = useCallback(async () => {
     const seq = ++loadSeq.current;
-    const { data: mine } = await supabase.from("profiles").select("*").eq("id", userId).maybeSingle();
+    const { data: mine, error } = await supabase.from("profiles").select("*").eq("id", userId).maybeSingle();
     if (seq !== loadSeq.current) return; // a newer load superseded this one
+    if (error) { setLoadError(error.message); setLoading(false); return; }
+    setLoadError(null);
     setMe(mine || null);
     if (mine?.couple_id) {
       const [{ data: c }, { data: members }, { data: cats }] = await Promise.all([
@@ -58,12 +68,21 @@ export function DuoProvider({ userId, children }) {
 
   useEffect(() => { load(); }, [load]);
 
-  // theme: light is home base, dark is a choice
+  // theme: light is home base, dark is a choice. The device remembers it; the profile carries it to the next device.
   useEffect(() => {
     let t = "light";
     try { t = localStorage.getItem("duo-theme") === "dark" ? "dark" : "light"; } catch {}
     setTheme(t);
   }, []);
+  useEffect(() => {
+    if (!me?.theme || themeFromProfile.current) return;
+    themeFromProfile.current = true;
+    let local = null;
+    try { local = localStorage.getItem("duo-theme"); } catch {}
+    if (local) return; // this device has an explicit choice — keep it
+    const t = me.theme === "dark" ? "dark" : "light";
+    setTheme(t); document.documentElement.dataset.theme = t;
+  }, [me?.theme]);
   const flipTheme = () => {
     const next = theme === "dark" ? "light" : "dark";
     setTheme(next);
@@ -121,17 +140,16 @@ export function DuoProvider({ userId, children }) {
     return () => { document.removeEventListener("visibilitychange", onWake); supabase.removeChannel(ch); };
   }, [couple?.id, userId, load]);
 
-  // solo mode (or a profile row that hasn't landed yet): nothing to subscribe to — poll
+  // solo mode (or a profile row that hasn't landed yet): nothing to subscribe to — poll, but only while
+  // the tab is actually on screen, and back off once it's clearly a long wait
   useEffect(() => {
-    if (loading || me?.couple_id) return;
-    const id = setInterval(load, 4000);
-    return () => clearInterval(id);
-  }, [loading, me?.couple_id, load]);
-  useEffect(() => {
-    if (!me?.couple_id || partner) return;
-    const id = setInterval(load, 4000);
-    return () => clearInterval(id);
-  }, [me?.couple_id, partner, load]);
+    const waitingForSomething = (!loading && !me?.couple_id) || (me?.couple_id && !partner);
+    if (!waitingForSomething) return;
+    const tick = () => { if (document.visibilityState === "visible") load(); };
+    let id = setInterval(tick, 4000);
+    const slow = setTimeout(() => { clearInterval(id); id = setInterval(tick, 20000); }, 5 * 60 * 1000); // after 5 min: every 20 s
+    return () => { clearInterval(id); clearTimeout(slow); };
+  }, [loading, me?.couple_id, partner, load]);
 
   const subscribe = useCallback((fn) => { listeners.current.add(fn); return () => listeners.current.delete(fn); }, []);
 
@@ -152,14 +170,14 @@ export function DuoProvider({ userId, children }) {
   }, [loading, me, partner, pathname]);
 
   const value = useMemo(() => ({
-    supabase, me, partner, couple, categories, loading, reload: load, subscribe, toast, theme, flipTheme,
+    supabase, me, partner, couple, categories, loading, loadError, reload: load, subscribe, toast, theme, flipTheme,
     tz: couple?.timezone || "Asia/Karachi",
     who: (uid) => (uid === userId ? "you" : "him"),
     nameOf: (uid) => (uid === userId ? me?.display_name || "you" : partner?.display_name || "your person"),
     letterOf: (uid) => initials(uid === userId ? me?.display_name : partner?.display_name),
     setConfetti: (fn) => { confettiRef.current = fn; },
     confetti: () => confettiRef.current?.(),
-  }), [me, partner, couple, categories, loading, theme, userId]);
+  }), [me, partner, couple, categories, loading, loadError, theme, userId]);
 
   return (
     <Ctx.Provider value={value}>
@@ -169,15 +187,19 @@ export function DuoProvider({ userId, children }) {
   );
 }
 
-/** Re-run `fetcher` on mount and whenever any of `tables` changes (Realtime). */
+/** Re-run `fetcher` on mount and whenever any of `tables` changes (Realtime).
+ *  Returns [data, refresh, error]. A failed fetch keeps the last good data and surfaces `error`
+ *  instead of silently rendering zeros. */
 export function useLive(tables, fetcher, deps = []) {
   const { subscribe, couple } = useDuo();
   const [data, setData] = useState(null);
+  const [error, setError] = useState(null);
   const [tick, setTick] = useState(0);
   const timer = useRef(null);
   useEffect(() => {
     let alive = true;
-    Promise.resolve(fetcher()).then((d) => { if (alive) setData(d); }).catch(console.error);
+    Promise.resolve().then(fetcher).then((d) => { if (alive) { setData(d); setError(null); } })
+      .catch((e) => { console.error(e); if (alive) setError(e?.message || String(e)); });
     return () => { alive = false; };
   }, [tick, couple?.id, ...deps]);
   useEffect(() => subscribe((ev) => {
@@ -185,5 +207,17 @@ export function useLive(tables, fetcher, deps = []) {
     clearTimeout(timer.current);
     timer.current = setTimeout(() => setTick((t) => t + 1), 120);
   }), [subscribe, tables.join(",")]);
-  return [data, () => setTick((t) => t + 1)];
+  const refresh = useCallback(() => setTick((t) => t + 1), []);
+  return [data, refresh, error];
+}
+
+/** The quiet "couldn't load" card every page shows instead of pretending the data is empty. */
+export function LoadError({ error, onRetry, what = "this" }) {
+  if (!error) return null;
+  return (
+    <div className="scrap-empty" role="alert">
+      couldn't load {what} just now 🌧 <small style={{ display: "block", opacity: .7 }}>{error}</small>
+      {onRetry && <button className="link-btn" onClick={onRetry}>try again →</button>}
+    </div>
+  );
 }
