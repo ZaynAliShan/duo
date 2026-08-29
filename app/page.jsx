@@ -6,8 +6,8 @@ import "./landing.css";
 const FEATURES = [
   {
     key: "today", e: "🏠", name: "Today",
-    line: "Tap ＋, type 500, tap Food, done.",
-    body: "Ten seconds to add anything. A daily photo + mood, a question of the day, and 💛 taps on each other's entries.",
+    line: "Log what you spend — it shows up on both phones.",
+    body: "Tap ＋, type the amount, pick a category — ten seconds, and your partner sees it instantly. Plus a daily mood + photo check-in, a question of the day, and 💛 taps on each other's entries.",
     mock: (
       <div className="mk mk-today">
         <div className="mk-row"><span className="av you">H</span><b>₨500</b><span className="mk-tag">Food</span></div>
@@ -18,8 +18,8 @@ const FEATURES = [
   },
   {
     key: "cal", e: "📅", name: "Calendar",
-    line: "The Sunday scroll, together.",
-    body: "Spending dots, plans, bills, birthdays — one month, both of you. Her cycle calendar lives here too, shared if she wants.",
+    line: "One calendar for your money and your plans.",
+    body: "Every day shows what you spent and what's coming — dates, bills, birthdays, trips. Her cycle gets its own gentle calendar here too, shared only if she chooses.",
     mock: (
       <div className="mk mk-cal">
         {Array.from({ length: 28 }).map((_, i) => (
@@ -30,8 +30,8 @@ const FEATURES = [
   },
   {
     key: "notes", e: "📌", name: "Corkboard",
-    line: "Forget-me-nots, pinned.",
-    body: "Sticky notes and shared lists you both tick off. Coffee orders, sizes, our song, that restaurant.",
+    line: "Remember the little things, so you never ask twice.",
+    body: "Sticky notes and shared checklists for both of you: coffee orders, clothing sizes, the grocery run, our song, that restaurant you keep meaning to try.",
     mock: (
       <div className="mk mk-notes">
         <div className="stick a">oat latte, extra hot ☕</div>
@@ -41,8 +41,8 @@ const FEATURES = [
   },
   {
     key: "goals", e: "🎯", name: "Goals",
-    line: "Jars that fill up.",
-    body: "Either of you drops money in; 100% = confetti. A bucket list for the dreams that aren't about money.",
+    line: "Save toward things together, one jar at a time.",
+    body: "Set a target — a trip, a sofa — and either of you drops money in. Watch the jar fill; 100% pops confetti. A bucket list for the dreams that aren't about money.",
     mock: (
       <div className="mk mk-goals">
         <div className="jar-col"><div className="jar"><div className="liquid" style={{ background: "var(--butter)", height: "68%" }} /><div className="pct lit">68%</div></div><span>Japan 🗼</span></div>
@@ -53,8 +53,8 @@ const FEATURES = [
   },
   {
     key: "us", e: "💌", name: "Us",
-    line: "Open the envelope on the 1st.",
-    body: "A monthly letter about the two of you. Saved together since day one. Memories as a polaroid wall.",
+    line: "Your story so far — and a letter every month.",
+    body: "Totals since day one, who spent what, soft monthly caps — never a scoreboard. On the 1st, Duo writes a recap letter to open together. Every photo you kept, as a polaroid wall.",
     mock: (
       <div className="mk mk-us">
         <div className="env"><div className="flap" /><div className="letter">Dear us…</div></div>
