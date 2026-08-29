@@ -9,12 +9,12 @@
 /* ---- ambient sky: soft glows drifting + tiny hearts floating up (behind everything) ---- */
 .ld-sky{position:fixed;inset:0;z-index:-1;overflow:hidden;pointer-events:none;}
 .ld-sky .glow{
-  position:absolute;border-radius:50%;filter:blur(60px);opacity:.7;will-change:transform;
+  position:absolute;border-radius:50%;opacity:.7;will-change:transform;
   animation:ld-drift 22s ease-in-out infinite alternate;
 }
-.ld-sky .g1{width:56vmax;height:56vmax;left:-18vmax;top:-22vmax;background:radial-gradient(circle,var(--butter),transparent 70%);}
-.ld-sky .g2{width:48vmax;height:48vmax;right:-16vmax;top:18vh;background:radial-gradient(circle,var(--peach),transparent 70%);animation-duration:27s;animation-delay:-9s;}
-.ld-sky .g3{width:44vmax;height:44vmax;left:22vw;bottom:-26vmax;background:radial-gradient(circle,var(--sage),transparent 70%);animation-duration:31s;animation-delay:-18s;}
+.ld-sky .g1{width:56vmax;height:56vmax;left:-18vmax;top:-22vmax;background:radial-gradient(circle closest-side,var(--butter) 0%,color-mix(in srgb,var(--butter) 45%,transparent) 38%,transparent 100%);}
+.ld-sky .g2{width:48vmax;height:48vmax;right:-16vmax;top:18vh;background:radial-gradient(circle closest-side,var(--peach) 0%,color-mix(in srgb,var(--peach) 45%,transparent) 38%,transparent 100%);animation-duration:27s;animation-delay:-9s;}
+.ld-sky .g3{width:44vmax;height:44vmax;left:22vw;bottom:-26vmax;background:radial-gradient(circle closest-side,var(--sage) 0%,color-mix(in srgb,var(--sage) 45%,transparent) 38%,transparent 100%);animation-duration:31s;animation-delay:-18s;}
 :root[data-theme="dark"] .ld-sky .glow{opacity:.26;}
 :root[data-theme="dark"] .ld-sky .fh{--peak:.38;--tail:.22;}
 .ld-sky .fh{
@@ -44,7 +44,7 @@
   85%{opacity:var(--tail);}
   100%{transform:translate(14px,-112vh) rotate(6deg) scale(.9);opacity:0;}
 }
-@media (max-width:860px){.ld-sky .glow{filter:blur(44px);}.ld-sky .fh-3,.ld-sky .fh-6,.ld-sky .fh-9{display:none;}}
+@media (max-width:860px){.ld-sky .fh-3,.ld-sky .fh-6,.ld-sky .fh-9{display:none;}}
 
 /* top bar */
 .ld-top{display:flex;align-items:center;justify-content:space-between;padding:18px 0 6px;}
@@ -123,7 +123,7 @@
 .ld-feats h2{font-size:clamp(30px,4vw,44px);margin-bottom:34px;}
 .feat-list{display:flex;flex-direction:column;gap:18px;}
 .feat{display:grid;grid-template-columns:1.1fr .9fr;gap:24px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:26px;padding:24px 26px;box-shadow:var(--shadow);transition:transform .25s ease,box-shadow .25s ease;}
-.feat:hover{transform:translateY(-3px);box-shadow:var(--shadow-big);}
+.feat:hover{transform:translateY(-3px);box-shadow:0 18px 50px -10px rgba(74,53,39,.20),0 4px 14px rgba(74,53,39,.06);}
 .feat.flip .feat-txt{order:2}
 .feat.flip .feat-mock{order:1}
 .feat-e{font-size:28px;margin-bottom:4px;}
