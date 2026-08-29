@@ -13,43 +13,38 @@ function LoginInner() {
   const router = useRouter();
   const params = useSearchParams();
   const [email, setEmail] = useState("");
-  const [code, setCode] = useState("");
-  const [stage, setStage] = useState("email"); // email → code
+  const [pw, setPw] = useState("");
+  const [show, setShow] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
-  const [standalone, setStandalone] = useState(false);
+  const [offerCreate, setOfferCreate] = useState(false); // sign-in failed → offer to create the account
 
   useEffect(() => {
-    setStandalone(window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true);
     try { const e = localStorage.getItem("duo-login-email"); if (e) setEmail(e); } catch {}
   }, []);
 
-  async function sendLink(e) {
+  const next = params.get("next") || "/today";
+  const go = () => { try { localStorage.setItem("duo-login-email", email.trim()); } catch {} router.replace(next); router.refresh(); };
+
+  async function signIn(e) {
     e.preventDefault();
-    if (!email.trim()) return;
-    setBusy(true); setErr(""); setMsg("");
-    const next = params.get("next") || "/today";
-    const { error } = await supabase.auth.signInWithOtp({
-      email: email.trim(),
-      options: { emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}` },
-    });
+    if (!email.trim() || pw.length < 6) return;
+    setBusy(true); setErr(""); setOfferCreate(false);
+    const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password: pw });
     setBusy(false);
-    if (error) { setErr(copy.emailFail); return; }
-    try { localStorage.setItem("duo-login-email", email.trim()); } catch {}
-    setMsg(copy.emailSent);
-    setStage("code");
+    if (!error) return go();
+    if (/invalid login credentials/i.test(error.message)) { setOfferCreate(true); setErr(copy.loginNoMatch); return; }
+    setErr(copy.loginFail);
   }
 
-  async function verify(e) {
-    e.preventDefault();
-    if (code.trim().length < 6) return;
+  async function createAccount() {
     setBusy(true); setErr("");
-    const { error } = await supabase.auth.verifyOtp({ email: email.trim(), token: code.trim(), type: "email" });
+    const { data, error } = await supabase.auth.signUp({ email: email.trim(), password: pw });
     setBusy(false);
-    if (error) { setErr("that code didn't match — check the email and try again 💛"); return; }
-    router.replace(params.get("next") || "/today");
-    router.refresh();
+    if (error) { setErr(/already registered/i.test(error.message) ? copy.loginWrongPw : copy.loginFail); setOfferCreate(false); return; }
+    // no session back = the email already exists (Supabase hides that) or confirmation is on server-side; either way the password is the fix
+    if (!data.session) { setErr(copy.loginWrongPw); setOfferCreate(false); return; }
+    go();
   }
 
   return (
@@ -57,29 +52,23 @@ function LoginInner() {
       <div className="paper">
         <div className="we">💛</div>
         <h1>duo <span>💛</span></h1>
-        {stage === "email" ? (
-          <>
-            <p>Sign in with just your email. We'll send a link and a 6-digit code — no password, ever.</p>
-            <form onSubmit={sendLink}>
-              <input className="note-input" type="email" inputMode="email" autoComplete="email" placeholder="you@somewhere.com"
-                value={email} onChange={(e) => setEmail(e.target.value)} required />
-              {err && <div className="kind-msg">{err}</div>}
-              <button className="save-btn" disabled={busy || !email.trim()}>{busy ? "sending…" : "Send my code 💌"}</button>
-            </form>
-          </>
-        ) : (
-          <>
-            <p>{msg}{standalone ? " Type the code here — inside the installed app, the code is the way in." : " Tap the link, or type the code here."}</p>
-            <form onSubmit={verify}>
-              <input className="note-input code-input" inputMode="numeric" autoComplete="one-time-code" placeholder="••••••" maxLength={6}
-                value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))} autoFocus />
-              {err && <div className="kind-msg">{err}</div>}
-              <button className="save-btn" disabled={busy || code.length < 6}>{busy ? "checking…" : "Sign in 💛"}</button>
-            </form>
-            <button className="ghost-btn" onClick={() => { setStage("email"); setCode(""); setMsg(""); }}>use a different email</button>
-          </>
-        )}
-        <div className="tiny">Local dev: emails land in Mailpit at <a href="http://localhost:54324" target="_blank" rel="noreferrer">localhost:54324</a></div>
+        <p>Your email and a password — that's the whole door. No verification emails, nothing to wait for.</p>
+        <form onSubmit={signIn}>
+          <input className="note-input" type="email" inputMode="email" autoComplete="email" placeholder="you@somewhere.com"
+            value={email} onChange={(e) => { setEmail(e.target.value); setOfferCreate(false); }} required />
+          <div className="pw-wrap">
+            <input className="note-input" type={show ? "text" : "password"} autoComplete="current-password" placeholder="password (6+ characters)"
+              minLength={6} value={pw} onChange={(e) => { setPw(e.target.value); setOfferCreate(false); }} required />
+            <button type="button" className="pw-eye" onClick={() => setShow((v) => !v)} aria-label={show ? "hide password" : "show password"}>{show ? "🙈" : "👀"}</button>
+          </div>
+          {err && <div className="kind-msg">{err}</div>}
+          {offerCreate ? (
+            <button type="button" className="save-btn" disabled={busy} onClick={createAccount}>{busy ? "creating…" : "Yes, create my account 💛"}</button>
+          ) : (
+            <button className="save-btn" disabled={busy || !email.trim() || pw.length < 6}>{busy ? "checking…" : "Sign in 💛"}</button>
+          )}
+        </form>
+        <div className="tiny">New here? Sign in with the email + password you want, and we'll create your account on the spot. Pick a password you'll remember — there's no reset email.</div>
       </div>
     </div>
   );

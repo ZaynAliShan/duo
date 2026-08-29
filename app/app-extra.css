@@ -12,6 +12,10 @@ a{color:inherit;}
 .paper .we{font-size:46px;line-height:1;}
 .paper .note-input{text-align:center;font-size:16px;}
 .paper .row{display:flex;gap:8px;}
+.paper .pw-wrap{position:relative;margin-top:8px;}
+.paper .pw-wrap .note-input{padding-right:46px;}
+.paper .pw-eye{position:absolute;right:8px;top:50%;transform:translateY(-50%);border:0;background:transparent;font-size:18px;cursor:pointer;padding:6px;line-height:1;}
+.paper .tiny{margin-top:14px;}
 .paper .row .save-btn{flex:1;}
 .ghost-btn{
   width:100%;border:1.5px dashed var(--line);background:transparent;cursor:pointer;border-radius:16px;

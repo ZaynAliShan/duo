@@ -12,7 +12,7 @@ Auth (email link **and** 6-digit code, PWA-friendly) · onboarding (name, 6 colo
 - `npm test` (16 unit tests: cycle, pace, recap) · `node scripts/negative-test.mjs` (third account sees nothing; blur, own-only, sharing rules) · Playwright: `ui-check` (every page × 2 viewports + add flow), `ui-flows` (two live browsers, realtime), `ui-onboarding` (real email → code → invite → join). All green against the Docker container.
 
 ## For PROD (when you're back)
-1. Supabase project → run `supabase link` + `supabase db push`; create private buckets `checkins`, `moments`, `avatars` (or copy `config.toml` bucket blocks); set the magic-link email template from `supabase/templates/magic_link.html` (needs `{{ .Token }}`); Auth → URL config: site URL + `/auth/callback` redirect.
+1. Supabase project → run `supabase link` + `supabase db push`; create private buckets `checkins`, `moments`, `avatars` (or copy `config.toml` bucket blocks); Auth → Providers → Email: keep enabled, **turn OFF "Confirm email"** (sign-in is email + password, no emails are sent — decided 2026-08-29); Auth → URL config: site URL + `/auth/callback` redirect.
 2. Vercel env: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_APP_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `CRON_SECRET` (leave `SUPABASE_INTERNAL_URL` unset). `vercel.json` already schedules both crons.
 3. Phones on the LAN before prod: rebuild with `NEXT_PUBLIC_SUPABASE_URL=http://<your-mac-ip>:54321` and `NEXT_PUBLIC_APP_URL=http://<your-mac-ip>:3000`.
 
