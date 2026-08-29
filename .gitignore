@@ -13,3 +13,4 @@ supabase/.branches
 shots
 *.zip
 .env.prod
+.vercel
