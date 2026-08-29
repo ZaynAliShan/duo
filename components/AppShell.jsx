@@ -102,7 +102,7 @@ export default function AppShell({ children }) {
       <nav className="tabbar">
         {NAV.map((n) => (
           <Link key={n.href} href={n.href} className={"tab" + (active(n.href) ? " active" : "")} data-pane={n.href.slice(1)}>
-            <span className="ico">{n.ico}</span>{n.tab}
+            <span className="ico">{n.ico}</span><span className="tl">{n.tab}</span>
           </Link>
         ))}
       </nav>

@@ -425,7 +425,7 @@ h2.pane-title{font-family:var(--hand);font-size:26px;margin:8px 2px 4px;}
 .amt-display .zero{color:var(--ink-soft);opacity:.5;}
 .chip-row{display:flex;gap:8px;overflow-x:auto;padding:8px 2px 12px;scrollbar-width:none;}
 .chip-row::-webkit-scrollbar{display:none;}
-@media (min-width:900px){.chip-row{flex-wrap:wrap;overflow:visible;}}
+@media (min-width:900px){.chip-row,.cal-stats{flex-wrap:wrap;overflow:visible;}}
 .chip{
   flex:0 0 auto;border:1.5px solid var(--line);background:var(--chip);color:var(--ink);
   font-weight:700;font-size:13.5px;padding:9px 14px;border-radius:999px;cursor:pointer;
@@ -1509,6 +1509,26 @@ img,video,canvas{max-width:100%;}
   .day .dnum{font-size:15.5px;}
   .day .damt{font-size:11.5px;}
   .hub-hero .hh-big{font-size:27px;}
+  /* hub cards: smaller badge + tighter gaps so the copy gets real width */
+  .hub-card{padding:16px 14px;gap:12px;}
+  .hub-emoji{width:56px;height:56px;font-size:27px;}
+  .hub-ring{width:84px;height:84px;}
+  .hub-ring::before{inset:9px;}
+  .hub-ring .rp{font-size:18px;}
+  .hub-go{width:36px;height:36px;font-size:16px;}
+  .hub-name{font-size:21px;}
+  .hub-line{font-size:14px;}
+  .hub-line b{font-size:15px;}
+  .grid{gap:3px;}
+  .day .damt{font-size:9.5px;letter-spacing:-.3px;max-width:100%;overflow:hidden;white-space:nowrap;}
+  .day .damt .dsave{display:none;} /* the jar dot under the number already says it */
+}
+/* ≤360px: eight tabs can't all carry a label — icons only, the active one keeps its name */
+@media (max-width:360px){
+  .tab{gap:1px;padding:5px 0 3px;}
+  .tab .ico{font-size:23px;}
+  .tab .tl{display:none;}
+  .tab.active .tl{display:block;font-size:9px;letter-spacing:-.2px;}
 }
 
 /* --- short landscape phones --- */

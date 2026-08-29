@@ -161,7 +161,12 @@
   .desk .phone{width:172px;padding:12px;}
   .desk .phone-b{top:118px;}
   .polaroid{width:104px;bottom:10px;}
-    .sticky.mini{width:130px;font-size:12px;right:0;top:0;}
+  .sticky.mini{width:126px;font-size:12px;right:8px;top:0;}
+}
+@media (max-width:380px){
+  .desk{height:480px;}
+  .desk .phone{width:164px;}
+  .desk-jar{right:32px;}
 }
 @media (prefers-reduced-motion:reduce){
   .ld *,.ld *::before,.ld *::after{animation:none!important;transition:none!important;}

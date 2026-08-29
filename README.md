@@ -26,7 +26,7 @@ The `web` container runs `next dev` with your source bind-mounted, so every save
 - `npm test` — pure functions in `lib/` (`cycle.js`, `pace.js`, `recap.js`).
 - `node scripts/negative-test.mjs` — the RLS gate: a third account sees zero rows/objects, can't join, can't redeem; partner blur/own-only rules.
 - `node scripts/seed-demo.mjs` — a linked demo couple (`a@duo.test` Zain · `b@duo.test` Hamna) with a month of data.
-- Headless UI (Playwright, installed separately): `scripts/ui-check.mjs` (every page, both viewports, add-sheet), `scripts/ui-flows.mjs` (two live browsers: blur/reveal, QOTD, hearts, ping, jars, notes, cycle, marks), `scripts/ui-onboarding.mjs` (real email → code → onboarding → invite → join).
+- Headless UI (Playwright, installed separately): `scripts/ui-check.mjs` (every page, both viewports, add-sheet), `scripts/ui-responsive.mjs` (every public + private page at 16 viewports 320px→4K; fails on horizontal overflow, screenshots to `shots/responsive/`; `ONLY=phone-320,4k` to narrow), `scripts/ui-flows.mjs` (two live browsers: blur/reveal, QOTD, hearts, ping, jars, notes, cycle, marks), `scripts/ui-onboarding.mjs` (real email → code → onboarding → invite → join).
 
 ## Two-phone test
 Sign in as A → onboarding → **Start a Duo** → copy the invite link. In a second browser/profile sign in as B → open the link → sign in → linked. A third account sees nothing (see `supabase/schema.md` and `scripts/negative-test.mjs`).
