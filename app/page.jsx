@@ -117,7 +117,8 @@ export default function Landing() {
           <div className="phone phone-a">
             <div className="ph-head"><span className="av you">H</span><span>her phone</span></div>
             <div className="entry">
-              <div className="en-top"><span className="av you">H</span><span className="en-who"><b>H</b> added</span><span className="en-time">just now</span></div>
+              {/* each phone speaks from its owner's side: she sees "You added", he sees "H added" — same entry, two views */}
+              <div className="en-top"><span className="av you">H</span><span className="en-who"><b>You</b> added</span><span className="en-time">just now</span></div>
               <div className="en-amt">₨500 <small>Food</small></div>
               <div className="en-like"><span className="hb">💛</span><span className="hl">Z tapped 💛</span></div>
             </div>
